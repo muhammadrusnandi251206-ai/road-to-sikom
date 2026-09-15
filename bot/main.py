@@ -16,6 +16,7 @@ GEMINI_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.1-flash-lite')
 API_BASE_URL = 'https://nandi.pythonanywhere.com'
 
+# Inisialisasi Bot & Client Gemini AI
 bot = telebot.TeleBot(BOT_TOKEN) if BOT_TOKEN else None
 client = genai.Client(api_key=GEMINI_KEY) if GEMINI_KEY else None
 
