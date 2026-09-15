@@ -1,0 +1,5 @@
+pyTelegramBotAPI
+requests
+apscheduler
+google-genai
+python-dotenv
