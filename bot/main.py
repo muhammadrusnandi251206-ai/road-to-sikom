@@ -3,7 +3,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeybo
 import os
 import json
 import requests
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from google import genai
 from google.genai import types
@@ -15,6 +15,9 @@ BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 GEMINI_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.1-flash-lite')
 API_BASE_URL = 'https://nandi.pythonanywhere.com'
+
+# Definisikan Zona Waktu WIB (UTC+7)
+WIB = timezone(timedelta(hours=7))
 
 # Inisialisasi Bot & Client Gemini AI
 bot = telebot.TeleBot(BOT_TOKEN) if BOT_TOKEN else None
@@ -30,13 +33,13 @@ def save_chat_id(chat_id):
 def get_saved_chat_id():
     return SAVED_CHAT_ID
 
-# --- ESCALATION SCHEDULER ABSENSI PERKULIAHAN (TIAP 1 MENIT) VIA API ---
+# --- ESCALATION SCHEDULER ABSENSI PERKULIAHAN (TIAP 1 MENIT) VIA API (WIB) ---
 def check_attendance_escalation():
     chat_id = get_saved_chat_id()
     if not bot or not chat_id:
         return
 
-    now = datetime.now()
+    now = datetime.now(WIB)
     current_day = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'][now.weekday()]
     today_str = now.strftime('%Y-%m-%d')
 
@@ -56,7 +59,7 @@ def check_attendance_escalation():
 
         if status == 'BELUM ABSEN':
             try:
-                start_dt = datetime.strptime(f"{today_str} {s['start_time']}", '%Y-%m-%d %H:%M')
+                start_dt = datetime.strptime(f"{today_str} {s['start_time']}", '%Y-%m-%d %H:%M').replace(tzinfo=WIB)
                 diff_minutes = int((now - start_dt).total_seconds() / 60)
 
                 if diff_minutes in [0, 5, 10, 15, 20, 25]:
@@ -89,12 +92,12 @@ def check_task_deadlines():
         print("Error fetch tasks for deadline check:", e)
         return
 
-    now = datetime.now()
+    now = datetime.now(WIB)
 
     for task in tasks:
         if task.get('status') != 'Selesai' and task.get('deadline'):
             try:
-                deadline_dt = datetime.strptime(task['deadline'], '%Y-%m-%d')
+                deadline_dt = datetime.strptime(task['deadline'], '%Y-%m-%d').replace(tzinfo=WIB)
                 time_diff = deadline_dt - now
                 
                 if 0 <= time_diff.total_seconds() <= 86400:
@@ -107,8 +110,8 @@ def check_task_deadlines():
                     )
                     markup = InlineKeyboardMarkup()
                     markup.add(
-                        InlineKeyboardButton("✅ Tandai Selesai", callback_data=f"task_done_{task['id']}"),
-                        InlineKeyboardButton("📝 Catat Revisi", callback_data=f"note_task_{task['id']}"),
+                        InlineKeyboardButton("✅ Selesai", callback_data=f"task_done_{task['id']}"),
+                        InlineKeyboardButton("📝 Revisi", callback_data=f"note_task_{task['id']}"),
                         InlineKeyboardButton("🗑️ Hapus", callback_data=f"task_delete_{task['id']}")
                     )
                     bot.send_message(chat_id, msg, parse_mode='Markdown', reply_markup=markup)
@@ -168,13 +171,14 @@ MENU_TAMBAH_TUGAS = "➕ Tambah Tugas"
 MENU_CATATAN = "📝 Tambah Catatan"
 MENU_TANYA = "❓ Tanya AI"
 MENU_ABSEN = "✅ Sudah Absen"
+MENU_JADWAL = "📅 Jadwal Kuliah"
 MENU_BATAL = "❌ Batal"
 
 def main_menu():
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(KeyboardButton(MENU_TUGAS), KeyboardButton(MENU_TAMBAH_TUGAS))
     markup.add(KeyboardButton(MENU_CATATAN), KeyboardButton(MENU_TANYA))
-    markup.add(KeyboardButton(MENU_ABSEN))
+    markup.add(KeyboardButton(MENU_JADWAL), KeyboardButton(MENU_ABSEN))
     return markup
 
 def cancel_menu():
@@ -254,6 +258,39 @@ def handle_att_button(call):
 
     bot.edit_message_text("✅ *Presensi Tercatat! Pengingat otomatis dihentikan.*", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
     bot.answer_callback_query(call.id, text="Absen berhasil dicatat!")
+
+# --- TOMBOL: LIHAT JADWAL KULIAH ---
+@bot.message_handler(func=lambda msg: msg.text == MENU_JADWAL)
+def handle_list_schedules(message):
+    save_chat_id(message.chat.id)
+    try:
+        res = requests.get(f"{API_BASE_URL}/api/schedules", timeout=5)
+        if not res.ok:
+            bot.send_message(message.chat.id, "⚠️ Gagal mengambil data jadwal dari server.", reply_markup=main_menu())
+            return
+        schedules = res.json()
+    except Exception as e:
+        print("Error fetching schedules via API:", e)
+        bot.send_message(message.chat.id, "⚠️ Terjadi kesalahan koneksi ke server backend.", reply_markup=main_menu())
+        return
+
+    if not schedules:
+        bot.send_message(message.chat.id, "📭 Belum ada jadwal kuliah yang terdaftar di database.", reply_markup=main_menu())
+        return
+
+    text = "📅 *DAFTAR JADWAL KULIAH KONTROL ROOM*\n\n"
+    for s in schedules:
+        status_icon = "✅" if s.get('attendance_status') == 'SUDAH ABSEN' else "⏳"
+        text += (
+            f"🎓 *{s['course_name']}*\n"
+            f"👤 Dosen: {s['lecturer_name']}\n"
+            f"🏛️ Ruang: {s['room']}\n"
+            f"📆 Hari: {s['day_of_week']} | ⏰ {s['start_time']} - {s['end_time']}\n"
+            f"📌 Status Hari Ini: {status_icon} *{s.get('attendance_status', 'BELUM ABSEN')}*\n"
+            f"----------------------------------\n"
+        )
+
+    bot.send_message(message.chat.id, text, parse_mode='Markdown', reply_markup=main_menu())
 
 # --- TOMBOL: LIHAT TUGAS AKTIF ---
 @bot.message_handler(func=lambda msg: msg.text == MENU_TUGAS)
