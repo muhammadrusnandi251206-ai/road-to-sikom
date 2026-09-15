@@ -136,7 +136,32 @@ export default function App() {
     }
   };
 
+  // Efek Suara Digital ala Control Room (Web Audio API)
+  const playControlRoomBeep = () => {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime); // Nada bersih A5
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.1);
+    } catch (e) {
+      // Abaikan jika diblokir browser sebelum interaksi user
+    }
+  };
+
   const handleToggleAttendance = async (schedId) => {
+    playControlRoomBeep(); // Mainkan efek suara digital
+    if (navigator.vibrate) navigator.vibrate(50); // Haptic feedback ringan jika didukung
+
     try {
       const res = await fetch(`${API_BASE_URL}/api/attendance/toggle`, {
         method: 'POST',
@@ -404,7 +429,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* 3 Mini Cards (Card 2 diubah jadi Progress Tugas) */}
+        {/* 3 Mini Cards (Card 3 Dilengkapi Status Dots & Control Room Audio/Visual Feedback) */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
           <div style={{ backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '14px', padding: '1rem', textAlign: 'center', border: '1px solid #8b5cf6' }}>
             <h3 style={{ margin: 0, fontSize: '1.8rem', color: '#a78bfa', fontWeight: '900' }}>{schedules.length}</h3>
@@ -417,14 +442,26 @@ export default function App() {
             <div style={{ fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 'bold', marginTop: '0.2rem' }}>{completedSubtasks} dari {totalSubtasks} selesai</div>
           </div>
 
-          <div style={{ backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '14px', padding: '1rem', textAlign: 'center', border: nextClass?.attendance_status === 'SUDAH ABSEN' ? '1px solid #22c55e' : '1px solid #f97316', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '14px', padding: '1rem', textAlign: 'center', border: nextClass?.attendance_status === 'SUDAH ABSEN' ? '1px solid #22c55e' : '1px solid #f97316', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', transition: 'all 0.3s ease' }}>
             <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>STATUS ABSENSI</span>
-            <h4 style={{ margin: '0.2rem 0', color: nextClass?.attendance_status === 'SUDAH ABSEN' ? '#4ade80' : '#fb923c', fontSize: '1rem', fontWeight: '900' }}>
+            
+            {/* Indikator Titik Status Minimalis (Status Dots) */}
+            <div style={{ display: 'flex', gap: '4px', margin: '0.3rem 0' }}>
+              {schedules.slice(0, 3).map((s, idx) => (
+                <span key={idx} style={{ 
+                  width: '8px', height: '8px', borderRadius: '50%', 
+                  backgroundColor: s.attendance_status === 'SUDAH ABSEN' ? '#4ade80' : '#334155',
+                  boxShadow: s.attendance_status === 'SUDAH ABSEN' ? '0 0 6px #4ade80' : 'none'
+                }} title={s.course_name} />
+              ))}
+            </div>
+
+            <h4 style={{ margin: '0.1rem 0', color: nextClass?.attendance_status === 'SUDAH ABSEN' ? '#4ade80' : '#fb923c', fontSize: '0.9rem', fontWeight: '900' }}>
               {nextClass?.attendance_status === 'SUDAH ABSEN' ? '✅ SUDAH ABSEN' : '⚠️ BELUM ABSEN'}
             </h4>
             {nextClass && (
-              <button onClick={() => handleToggleAttendance(nextClass.id)} style={{ backgroundColor: nextClass.attendance_status === 'SUDAH ABSEN' ? '#334155' : '#ea580c', color: '#fff', border: 'none', padding: '0.3rem 0.8rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer', marginTop: '0.3rem' }}>
-                {nextClass.attendance_status === 'SUDAH ABSEN' ? '↩ Batalkan' : '⚡ 1-Klik Sudah Absen'}
+              <button onClick={() => handleToggleAttendance(nextClass.id)} style={{ backgroundColor: nextClass.attendance_status === 'SUDAH ABSEN' ? '#334155' : '#ea580c', color: '#fff', border: 'none', padding: '0.3rem 0.8rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer', marginTop: '0.2rem' }}>
+                {nextClass.attendance_status === 'SUDAH ABSEN' ? '↩ Batalkan' : '⚡ 1-Klik Absen'}
               </button>
             )}
           </div>
