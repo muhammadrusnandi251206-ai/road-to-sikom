@@ -92,14 +92,11 @@ def check_task_deadlines():
     now = datetime.now()
 
     for task in tasks:
-        # Cek hanya tugas yang belum selesai dan punya deadline
         if task.get('status') != 'Selesai' and task.get('deadline'):
             try:
-                # Format deadline diharapkan: YYYY-MM-DD
                 deadline_dt = datetime.strptime(task['deadline'], '%Y-%m-%d')
                 time_diff = deadline_dt - now
                 
-                # Jika selisih hari tersisa antara 0 sampai 1 hari (H-1)
                 if 0 <= time_diff.total_seconds() <= 86400:
                     msg = (
                         f"🚨 *PERINGATAN DEADLINE (H-1)* 🚨\n\n"
@@ -111,7 +108,8 @@ def check_task_deadlines():
                     markup = InlineKeyboardMarkup()
                     markup.add(
                         InlineKeyboardButton("✅ Tandai Selesai", callback_data=f"task_done_{task['id']}"),
-                        InlineKeyboardButton("📝 Catat Revisi", callback_data=f"note_task_{task['id']}")
+                        InlineKeyboardButton("📝 Catat Revisi", callback_data=f"note_task_{task['id']}"),
+                        InlineKeyboardButton("🗑️ Hapus", callback_data=f"task_delete_{task['id']}")
                     )
                     bot.send_message(chat_id, msg, parse_mode='Markdown', reply_markup=markup)
             except Exception as ex:
@@ -279,8 +277,9 @@ def handle_list_tasks(message):
 
         markup = InlineKeyboardMarkup()
         markup.add(
-            InlineKeyboardButton("✅ Tandai Selesai", callback_data=f"task_done_{t['id']}"),
-            InlineKeyboardButton("📝 Catat Revisi", callback_data=f"note_task_{t['id']}")
+            InlineKeyboardButton("✅ Selesai", callback_data=f"task_done_{t['id']}"),
+            InlineKeyboardButton("📝 Revisi", callback_data=f"note_task_{t['id']}"),
+            InlineKeyboardButton("🗑️ Hapus", callback_data=f"task_delete_{t['id']}")
         )
         bot.send_message(message.chat.id, text, parse_mode='Markdown', reply_markup=markup)
 
@@ -293,6 +292,20 @@ def handle_task_done_button(call):
         print("Error mark task done:", e)
     bot.edit_message_text("✅ *Tugas ditandai selesai!*", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
     bot.answer_callback_query(call.id, text="Tugas selesai dicatat!")
+
+# --- CALLBACK HANDLER: HAPUS TUGAS ---
+@bot.callback_query_handler(func=lambda call: call.data.startswith("task_delete_"))
+def handle_task_delete_button(call):
+    task_id = call.data.replace("task_delete_", "")
+    try:
+        res = requests.delete(f"{API_BASE_URL}/api/tasks/{task_id}", timeout=5)
+        if res.ok:
+            bot.edit_message_text("🗑️ *Tugas berhasil dihapus!*", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
+        else:
+            bot.answer_callback_query(call.id, text="Gagal menghapus tugas.")
+    except Exception as e:
+        print("Error deleting task via API:", e)
+        bot.answer_callback_query(call.id, text="Terjadi kesalahan jaringan.")
 
 # --- TOMBOL: TAMBAH TUGAS ---
 @bot.message_handler(func=lambda msg: msg.text == MENU_TAMBAH_TUGAS)
