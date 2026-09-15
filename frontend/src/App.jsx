@@ -429,6 +429,9 @@ export default function App() {
   });
 
   const nextClass = uncompletedTodayClass || globalUncompletedClass || (schedules.length > 0 ? schedules[0] : null);
+  
+  // Perbaikan logika Hari Ini vs Besok secara presisi
+  const isClassToday = nextClass && (nextClass.day_of_week || '').trim().toLowerCase() === todayDayName.toLowerCase();
 
   const monthNames = [
     "JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI",
@@ -462,9 +465,11 @@ export default function App() {
 
         {/* AIRTIME TICKER BAR */}
         <div style={{ backgroundColor: '#0f172a', border: '1px solid #eab308', borderRadius: '12px', padding: '0.8rem 1.2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', flexWrap: 'wrap' }}>
             <span style={{ backgroundColor: '#eab308', color: '#000', padding: '0.2rem 0.6rem', borderRadius: '6px', fontWeight: '900', fontSize: '0.85rem' }}>⚠️ AIRTIME WARNING</span>
-            <span style={{ color: '#facc15', fontFamily: 'monospace', fontWeight: 'bold', fontSize: '1.1rem' }}>{now.toLocaleTimeString('id-ID')} WIB</span>
+            <span style={{ color: '#facc15', fontFamily: 'monospace', fontWeight: 'bold', fontSize: '1rem' }}>
+              {now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(/\./g, ':')} WIB, {now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </span>
           </div>
           <div>
             <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block' }}>COUNTDOWN TARGET: {nearestTask ? nearestTask.title.toUpperCase() : 'NO TARGET'}</span>
@@ -478,7 +483,9 @@ export default function App() {
           <div style={{ backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '16px', display: 'flex', overflow: 'hidden', border: '1px solid #0284c7', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', flexWrap: 'wrap' }}>
             <div style={{ backgroundColor: '#0284c7', color: '#ffffff', padding: '1.2rem 1.8rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: '160px' }}>
               <span style={{ fontSize: '0.7rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>KELAS BERIKUTNYA</span>
-              <span style={{ fontSize: '1.3rem', fontWeight: '900', marginTop: '0.2rem' }}>Besok, pukul {nextClass ? nextClass.start_time : '07:00'}</span>
+              <span style={{ fontSize: '1.3rem', fontWeight: '900', marginTop: '0.2rem' }}>
+                {isClassToday ? `Hari ini, pukul ${nextClass ? nextClass.start_time : '07:00'}` : `Besok, pukul ${nextClass ? nextClass.start_time : '07:00'}`}
+              </span>
             </div>
             <div style={{ padding: '1.2rem 1.8rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1 }}>
               <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: '800', color: '#38bdf8' }}>{nextClass ? nextClass.course_name : 'Metode Penelitian Komunikasi Kuantitatif'}</h2>
