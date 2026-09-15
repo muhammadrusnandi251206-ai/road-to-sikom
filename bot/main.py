@@ -74,8 +74,52 @@ def check_attendance_escalation():
             except Exception as ex:
                 print("Error parsing time/sending escalation:", ex)
 
+# --- SCHEDULER NOTIFIKASI H-1 DEADLINE TUGAS (DICEK TIAP 1 JAM) ---
+def check_task_deadlines():
+    chat_id = get_saved_chat_id()
+    if not bot or not chat_id:
+        return
+
+    try:
+        res = requests.get(f"{API_BASE_URL}/api/tasks", timeout=5)
+        if not res.ok:
+            return
+        tasks = res.json()
+    except Exception as e:
+        print("Error fetch tasks for deadline check:", e)
+        return
+
+    now = datetime.now()
+
+    for task in tasks:
+        # Cek hanya tugas yang belum selesai dan punya deadline
+        if task.get('status') != 'Selesai' and task.get('deadline'):
+            try:
+                # Format deadline diharapkan: YYYY-MM-DD
+                deadline_dt = datetime.strptime(task['deadline'], '%Y-%m-%d')
+                time_diff = deadline_dt - now
+                
+                # Jika selisih hari tersisa antara 0 sampai 1 hari (H-1)
+                if 0 <= time_diff.total_seconds() <= 86400:
+                    msg = (
+                        f"🚨 *PERINGATAN DEADLINE (H-1)* 🚨\n\n"
+                        f"Tugas ini udah mepet nih Nandi, buruan dikerjain!\n\n"
+                        f"📌 *{task['title']}*\n"
+                        f"🏷️ Mata Kuliah: {task.get('tag') or 'Umum'}\n"
+                        f"⏰ Tenggat Waktu: {task['deadline']}"
+                    )
+                    markup = InlineKeyboardMarkup()
+                    markup.add(
+                        InlineKeyboardButton("✅ Tandai Selesai", callback_data=f"task_done_{task['id']}"),
+                        InlineKeyboardButton("📝 Catat Revisi", callback_data=f"note_task_{task['id']}")
+                    )
+                    bot.send_message(chat_id, msg, parse_mode='Markdown', reply_markup=markup)
+            except Exception as ex:
+                print("Error parsing task deadline date:", ex)
+
 scheduler = BackgroundScheduler(daemon=True)
 scheduler.add_job(check_attendance_escalation, 'interval', minutes=1)
+scheduler.add_job(check_task_deadlines, 'interval', hours=1)
 scheduler.start()
 
 # --- HELPER: AMBIL KONTEKS TUGAS & CATATAN VIA API ---
