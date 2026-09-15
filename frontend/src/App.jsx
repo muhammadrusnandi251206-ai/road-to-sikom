@@ -33,7 +33,7 @@ export default function App() {
   const [aiDraftSubtasks, setAiDraftSubtasks] = useState([]);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
 
-  // Form State Upload Insight (file/foto + teks manual -> knowledge_base)
+  // Form State Upload Insight
   const [insightFile, setInsightFile] = useState(null);
   const [insightText, setInsightText] = useState('');
   const [insightSource, setInsightSource] = useState('');
@@ -88,10 +88,55 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
+  // --- HANDLER HAPUS PER-ITEM (CRUD DELETE) ---
+  const handleDeleteTask = async (taskId, e) => {
+    if (e) e.stopPropagation();
+    if (!window.confirm("Apakah kamu yakin ingin menghapus tugas ini?")) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/tasks/${taskId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setSelectedCalendarItem(null);
+        fetchData();
+      } else {
+        alert("Gagal menghapus tugas.");
+      }
+    } catch (err) {
+      alert("Error menghapus tugas.");
+    }
+  };
+
+  const handleDeleteInsight = async (insightId) => {
+    if (!window.confirm("Apakah kamu yakin ingin menghapus catatan insight ini?")) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/insights/${insightId}`, { method: 'DELETE' });
+      if (res.ok) {
+        fetchData();
+      } else {
+        alert("Gagal menghapus insight.");
+      }
+    } catch (err) {
+      alert("Error menghapus insight.");
+    }
+  };
+
+  const handleDeleteSchedule = async (scheduleId) => {
+    if (!window.confirm("Apakah kamu yakin ingin menghapus jadwal kuliah ini?")) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/schedules/${scheduleId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setSelectedCalendarItem(null);
+        fetchData();
+      } else {
+        alert("Gagal menghapus jadwal.");
+      }
+    } catch (err) {
+      alert("Error menghapus jadwal.");
+    }
+  };
+
   const activeTasks = tasks.filter(t => t.status !== 'Selesai');
   const nearestTask = activeTasks.length > 0 ? activeTasks[0] : null;
 
-  // Logika Hitung Progress Tugas & Sub-task secara Real-Time
   let totalSubtasks = 0;
   let completedSubtasks = 0;
 
@@ -139,7 +184,6 @@ export default function App() {
     }
   };
 
-  // Efek Suara Digital ala Control Room (Web Audio API)
   const playControlRoomBeep = () => {
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -147,7 +191,7 @@ export default function App() {
       const gain = audioCtx.createGain();
       
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, audioCtx.currentTime); // Nada bersih A5
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime);
       gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
       
@@ -156,14 +200,12 @@ export default function App() {
       
       osc.start();
       osc.stop(audioCtx.currentTime + 0.1);
-    } catch (e) {
-      // Abaikan jika diblokir browser sebelum interaksi user
-    }
+    } catch (e) {}
   };
 
   const handleToggleAttendance = async (schedId) => {
-    playControlRoomBeep(); // Mainkan efek suara digital
-    if (navigator.vibrate) navigator.vibrate(50); // Haptic feedback ringan jika didukung
+    playControlRoomBeep();
+    if (navigator.vibrate) navigator.vibrate(50);
 
     try {
       const res = await fetch(`${API_BASE_URL}/api/attendance/toggle`, {
@@ -371,20 +413,16 @@ export default function App() {
     } catch (err) { alert('Gagal menghubungi server auth.'); }
   };
 
-  // Logika Nama Hari Real-Time (Indonesia)
   const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
   const todayDayName = dayNames[now.getDay()];
 
-  // 1. Filter Jadwal Hari Ini Saja
   const todaySchedules = schedules.filter(s => (s.day_of_week || '').trim().toLowerCase() === todayDayName.toLowerCase());
   
-  // 2. Cari kelas hari ini yang belum absen
   const uncompletedTodayClass = todaySchedules.find(s => {
     const st = (s.attendance_status || '').toUpperCase();
     return st !== 'SUDAH ABSEN' && st !== 'SUDAH' && s.is_attended !== true && s.is_attended !== 1;
   });
 
-  // 3. Fallback pencarian jadwal global berikutnya jika hari ini tidak ada kelas
   const globalUncompletedClass = schedules.find(s => {
     const st = (s.attendance_status || '').toUpperCase();
     return st !== 'SUDAH ABSEN' && st !== 'SUDAH' && s.is_attended !== true && s.is_attended !== 1;
@@ -437,7 +475,6 @@ export default function App() {
         {/* WIDGET KELAS & MINI CARDS */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
           
-          {/* Card Utama Kelas Berikutnya */}
           <div style={{ backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '16px', display: 'flex', overflow: 'hidden', border: '1px solid #0284c7', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', flexWrap: 'wrap' }}>
             <div style={{ backgroundColor: '#0284c7', color: '#ffffff', padding: '1.2rem 1.8rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: '160px' }}>
               <span style={{ fontSize: '0.7rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>KELAS BERIKUTNYA</span>
@@ -454,7 +491,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* 3 Mini Cards (Card 3 Sempurna Berdasarkan Hari Real-Time) */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
             <div style={{ backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '14px', padding: '1rem', textAlign: 'center', border: '1px solid #8b5cf6' }}>
               <h3 style={{ margin: 0, fontSize: '1.8rem', color: '#a78bfa', fontWeight: '900' }}>{schedules.length}</h3>
@@ -468,7 +504,6 @@ export default function App() {
             </div>
 
             {(() => {
-              // Evaluasi Real-Time Khusus Hari Ini
               const hasTodayClass = todaySchedules.length > 0;
               const isTodayUncompleted = hasTodayClass && todaySchedules.some(s => {
                 const st = (s.attendance_status || '').toUpperCase();
@@ -489,7 +524,6 @@ export default function App() {
                 >
                   <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>STATUS ABSENSI</span>
                   
-                  {/* Indikator Titik Status Hari Ini */}
                   <div style={{ display: 'flex', gap: '4px', margin: '0.4rem 0' }}>
                     {hasTodayClass ? (
                       todaySchedules.map((s, idx) => {
@@ -603,7 +637,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* LIST MONITOR TUGAS */}
+            {/* LIST MONITOR TUGAS DENGAN TOMBOL HAPUS (CRUD) */}
             <div style={{ backgroundColor: '#0f172a', padding: '1.2rem', borderRadius: '16px' }}>
               <h3 style={{ color: '#ec4899', marginTop: 0 }}>🎯 TASK & DEADLINE MONITOR (LIVE SQLITE)</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
@@ -616,14 +650,17 @@ export default function App() {
                         <h4 style={{ margin: 0, color: '#f8fafc' }}>{t.title}</h4>
                         <span style={{ fontSize: '0.75rem', color: '#38bdf8' }}>🏷️ {t.tag} • ⏰ Deadline: {t.deadline}</span>
                       </div>
-                      <span style={{ backgroundColor: t.status === 'Selesai' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(234, 179, 8, 0.2)', color: t.status === 'Selesai' ? '#4ade80' : '#facc15', padding: '0.3rem 0.8rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 'bold' }}>{t.status}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <span style={{ backgroundColor: t.status === 'Selesai' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(234, 179, 8, 0.2)', color: t.status === 'Selesai' ? '#4ade80' : '#facc15', padding: '0.3rem 0.8rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 'bold' }}>{t.status}</span>
+                        <button onClick={(e) => handleDeleteTask(t.id, e)} style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid #ef4444', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.75rem' }} title="Hapus Tugas Ini">🗑️</button>
+                      </div>
                     </div>
                   ))
                 )}
               </div>
             </div>
 
-            {/* KNOWLEDGE BASE / INSIGHTS PANEL */}
+            {/* KNOWLEDGE BASE / INSIGHTS PANEL DENGAN TOMBOL HAPUS (CRUD) */}
             <div style={{ backgroundColor: '#0f172a', padding: '1.2rem', borderRadius: '16px', marginTop: '1.5rem', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
               <h3 style={{ color: '#a78bfa', marginTop: 0 }}>🧠 KNOWLEDGE BASE & INSIGHTS</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
@@ -631,12 +668,15 @@ export default function App() {
                   <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Belum ada catatan/insight tersimpan.</p>
                 ) : (
                   knowledgeBase.map((kb, idx) => (
-                    <div key={idx} style={{ backgroundColor: '#1e293b', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                      {kb.source && (
-                        <span style={{ fontSize: '0.7rem', color: '#a78bfa', fontWeight: 'bold', textTransform: 'uppercase', display: 'block', marginBottom: '0.3rem' }}>
-                          📌 {kb.source}
+                    <div key={kb.id || idx} style={{ backgroundColor: '#1e293b', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)', position: 'relative' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.3rem' }}>
+                        <span style={{ fontSize: '0.7rem', color: '#a78bfa', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                          📌 {kb.source || 'Catatan Umum'}
                         </span>
-                      )}
+                        {kb.id && (
+                          <button onClick={() => handleDeleteInsight(kb.id)} style={{ backgroundColor: 'transparent', color: '#ef4444', border: 'none', cursor: 'pointer', fontSize: '0.8rem' }} title="Hapus Insight Ini">🗑️ Hapus</button>
+                        )}
+                      </div>
                       <p style={{ margin: 0, color: '#cbd5e1', fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{kb.text}</p>
                     </div>
                   ))
@@ -841,7 +881,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL POP-UP DETAIL ITEM KALENDER */}
+      {/* MODAL POP-UP DETAIL ITEM KALENDER DENGAN TOMBOL HAPUS */}
       {selectedCalendarItem && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100, padding: '1rem' }}>
           <div style={{ backgroundColor: '#0f172a', padding: '1.5rem', borderRadius: '16px', border: selectedCalendarItem.type === 'TASK' ? '1px solid #ec4899' : '1px solid #0284c7', width: '100%', maxWidth: '380px', boxSizing: 'border-box' }}>
@@ -859,6 +899,9 @@ export default function App() {
                     ✅ Tandai Tugas Selesai
                   </button>
                 )}
+                <button onClick={() => handleDeleteTask(selectedCalendarItem.data.id)} style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid #ef4444', padding: '0.6rem', borderRadius: '8px', width: '100%', fontWeight: 'bold', cursor: 'pointer', marginBottom: '0.5rem' }}>
+                  🗑️ Hapus Tugas Ini
+                </button>
               </>
             ) : selectedCalendarItem.type === 'SUBTASK' ? (
               <>
@@ -877,7 +920,11 @@ export default function App() {
                 <h4 style={{ color: '#fff', margin: '0.4rem 0' }}>{selectedCalendarItem.data.course_name}</h4>
                 <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0.2rem 0' }}>👨‍🏫 Dosen: {selectedCalendarItem.data.lecturer_name}</p>
                 <p style={{ color: '#38bdf8', fontSize: '0.85rem', margin: '0.2rem 0' }}>🏛️ Ruangan: {selectedCalendarItem.data.room}</p>
-                <p style={{ color: '#4ade80', fontSize: '0.85rem', margin: '0.2rem 0' }}>⏰ Waktu: {selectedCalendarItem.data.day_of_week}, {selectedCalendarItem.data.start_time} – {selectedCalendarItem.data.end_time}</p>
+                <p style={{ color: '#4ade80', fontSize: '0.85rem', margin: '0.2rem 0 1rem 0' }}>⏰ Waktu: {selectedCalendarItem.data.day_of_week}, {selectedCalendarItem.data.start_time} – {selectedCalendarItem.data.end_time}</p>
+                
+                <button onClick={() => handleDeleteSchedule(selectedCalendarItem.data.id)} style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid #ef4444', padding: '0.6rem', borderRadius: '8px', width: '100%', fontWeight: 'bold', cursor: 'pointer', marginBottom: '0.5rem' }}>
+                  🗑️ Hapus Jadwal Ini
+                </button>
               </>
             )}
 
