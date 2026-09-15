@@ -91,6 +91,10 @@ export default function App() {
   // --- HANDLER HAPUS PER-ITEM (CRUD DELETE) ---
   const handleDeleteTask = async (taskId, e) => {
     if (e) e.stopPropagation();
+    if (!isAdmin) {
+      alert("🔒 Akses ditolak! Masuk sebagai Produser terlebih dahulu untuk menghapus tugas.");
+      return;
+    }
     if (!window.confirm("Apakah kamu yakin ingin menghapus tugas ini?")) return;
     try {
       const res = await fetch(`${API_BASE_URL}/api/tasks/${taskId}`, { method: 'DELETE' });
@@ -106,6 +110,10 @@ export default function App() {
   };
 
   const handleDeleteInsight = async (insightId) => {
+    if (!isAdmin) {
+      alert("🔒 Akses ditolak! Masuk sebagai Produser terlebih dahulu.");
+      return;
+    }
     if (!window.confirm("Apakah kamu yakin ingin menghapus catatan insight ini?")) return;
     try {
       const res = await fetch(`${API_BASE_URL}/api/insights/${insightId}`, { method: 'DELETE' });
@@ -120,6 +128,10 @@ export default function App() {
   };
 
   const handleDeleteSchedule = async (scheduleId) => {
+    if (!isAdmin) {
+      alert("🔒 Akses ditolak! Masuk sebagai Produser terlebih dahulu untuk menghapus jadwal kuliah.");
+      return;
+    }
     if (!window.confirm("Apakah kamu yakin ingin menghapus jadwal kuliah ini?")) return;
     try {
       const res = await fetch(`${API_BASE_URL}/api/schedules/${scheduleId}`, { method: 'DELETE' });
@@ -430,7 +442,6 @@ export default function App() {
 
   const nextClass = uncompletedTodayClass || globalUncompletedClass || (schedules.length > 0 ? schedules[0] : null);
   
-  // Perbaikan logika Hari Ini vs Besok secara presisi
   const isClassToday = nextClass && (nextClass.day_of_week || '').trim().toLowerCase() === todayDayName.toLowerCase();
 
   const monthNames = [
@@ -600,6 +611,11 @@ export default function App() {
                   const dStr = dayNum < 10 ? `0${dayNum}` : `${dayNum}`;
                   const dateStr = `${currentYear}-${mStr}-${dStr}`;
 
+                  const isTodayBox = 
+                    dayNum === now.getDate() && 
+                    currentMonth === now.getMonth() && 
+                    currentYear === now.getFullYear();
+
                   const matchedTasks = tasks.filter(t => t.deadline === dateStr);
                   
                   const matchedSubtasks = [];
@@ -618,8 +634,28 @@ export default function App() {
                   const matchedSchedules = schedules.filter(s => s.day_of_week === currentDayName);
 
                   return (
-                    <div key={dayNum} style={{ minHeight: '65px', padding: '6px', borderRadius: '8px', backgroundColor: 'rgba(30, 41, 59, 0.5)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                      <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 'bold' }}>{dayNum}</span>
+                    <div 
+                      key={dayNum} 
+                      style={{ 
+                        minHeight: '65px', 
+                        padding: '6px', 
+                        borderRadius: '8px', 
+                        backgroundColor: isTodayBox ? 'rgba(236, 72, 153, 0.12)' : 'rgba(30, 41, 59, 0.5)', 
+                        border: isTodayBox ? '2px solid #ec4899' : '1px solid rgba(255,255,255,0.06)',
+                        boxShadow: isTodayBox ? '0 0 12px rgba(236, 72, 153, 0.3)' : 'none',
+                        position: 'relative'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                        <span style={{ fontSize: '0.75rem', color: isTodayBox ? '#ec4899' : '#94a3b8', fontWeight: isTodayBox ? '900' : 'bold' }}>
+                          {dayNum}
+                        </span>
+                        {isTodayBox && (
+                          <span style={{ backgroundColor: '#ec4899', color: '#fff', fontSize: '0.45rem', padding: '1px 4px', borderRadius: '4px', fontWeight: '900', letterSpacing: '0.5px' }}>
+                            TODAY
+                          </span>
+                        )}
+                      </div>
                       
                       {matchedSchedules.map((s, idx) => (
                         <div key={`sc-${idx}`} onClick={() => setSelectedCalendarItem({ type: 'SCHEDULE', data: s })} style={{ backgroundColor: '#0284c7', color: '#fff', fontSize: '0.55rem', padding: '2px 4px', borderRadius: '3px', marginTop: '2px', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}>
@@ -680,7 +716,7 @@ export default function App() {
                         <span style={{ fontSize: '0.7rem', color: '#a78bfa', fontWeight: 'bold', textTransform: 'uppercase' }}>
                           📌 {kb.source || 'Catatan Umum'}
                         </span>
-                        {kb.id && (
+                        {kb.id && isAdmin && (
                           <button onClick={() => handleDeleteInsight(kb.id)} style={{ backgroundColor: 'transparent', color: '#ef4444', border: 'none', cursor: 'pointer', fontSize: '0.8rem' }} title="Hapus Insight Ini">🗑️ Hapus</button>
                         )}
                       </div>
@@ -888,7 +924,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL POP-UP DETAIL ITEM KALENDER DENGAN TOMBOL HAPUS */}
+      {/* MODAL POP-UP DETAIL ITEM KALENDER DENGAN TOMBOL HAPUS AMAN (PRODUSER ONLY) */}
       {selectedCalendarItem && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100, padding: '1rem' }}>
           <div style={{ backgroundColor: '#0f172a', padding: '1.5rem', borderRadius: '16px', border: selectedCalendarItem.type === 'TASK' ? '1px solid #ec4899' : '1px solid #0284c7', width: '100%', maxWidth: '380px', boxSizing: 'border-box' }}>
@@ -906,9 +942,11 @@ export default function App() {
                     ✅ Tandai Tugas Selesai
                   </button>
                 )}
-                <button onClick={() => handleDeleteTask(selectedCalendarItem.data.id)} style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid #ef4444', padding: '0.6rem', borderRadius: '8px', width: '100%', fontWeight: 'bold', cursor: 'pointer', marginBottom: '0.5rem' }}>
-                  🗑️ Hapus Tugas Ini
-                </button>
+                {isAdmin && (
+                  <button onClick={() => handleDeleteTask(selectedCalendarItem.data.id)} style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid #ef4444', padding: '0.6rem', borderRadius: '8px', width: '100%', fontWeight: 'bold', cursor: 'pointer', marginBottom: '0.5rem' }}>
+                    🗑️ Hapus Tugas Ini
+                  </button>
+                )}
               </>
             ) : selectedCalendarItem.type === 'SUBTASK' ? (
               <>
@@ -929,9 +967,11 @@ export default function App() {
                 <p style={{ color: '#38bdf8', fontSize: '0.85rem', margin: '0.2rem 0' }}>🏛️ Ruangan: {selectedCalendarItem.data.room}</p>
                 <p style={{ color: '#4ade80', fontSize: '0.85rem', margin: '0.2rem 0 1rem 0' }}>⏰ Waktu: {selectedCalendarItem.data.day_of_week}, {selectedCalendarItem.data.start_time} – {selectedCalendarItem.data.end_time}</p>
                 
-                <button onClick={() => handleDeleteSchedule(selectedCalendarItem.data.id)} style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid #ef4444', padding: '0.6rem', borderRadius: '8px', width: '100%', fontWeight: 'bold', cursor: 'pointer', marginBottom: '0.5rem' }}>
-                  🗑️ Hapus Jadwal Ini
-                </button>
+                {isAdmin && (
+                  <button onClick={() => handleDeleteSchedule(selectedCalendarItem.data.id)} style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid #ef4444', padding: '0.6rem', borderRadius: '8px', width: '100%', fontWeight: 'bold', cursor: 'pointer', marginBottom: '0.5rem' }}>
+                    🗑️ Hapus Jadwal Ini
+                  </button>
+                )}
               </>
             )}
 
