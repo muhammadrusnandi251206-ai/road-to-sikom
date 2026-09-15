@@ -65,7 +65,7 @@ def check_attendance_escalation():
                 if diff_minutes in [0, 5, 10, 15, 20, 25]:
                     msg = (
                         f"⏰ *PENGINGAT ABSENSI ({diff_minutes} Min)*\n\n"
-                        f"Hai Nandi! Udah absen belum untuk kelas:\n"
+                        f"Hai Nandi! Udah absen belum? untuk kelas:\n"
                         f"📚 *{s['course_name']}*\n"
                         f"👨‍🏫 Dosen: {s['lecturer_name']}\n"
                         f"🏛️ Ruang: {s['room']}\n"
@@ -278,7 +278,7 @@ def handle_list_schedules(message):
         bot.send_message(message.chat.id, "📭 Belum ada jadwal kuliah yang terdaftar di database.", reply_markup=main_menu())
         return
 
-    text = "📅 *DAFTAR JADWAL KULIAH KONTROL ROOM*\n\n"
+    text = "📅 *DAFTAR JADWAL KULIAH NANDI*\n\n"
     for s in schedules:
         status_icon = "✅" if s.get('attendance_status') == 'SUDAH ABSEN' else "⏳"
         text += (
