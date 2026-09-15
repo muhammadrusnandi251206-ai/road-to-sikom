@@ -88,6 +88,24 @@ export default function App() {
   const activeTasks = tasks.filter(t => t.status !== 'Selesai');
   const nearestTask = activeTasks.length > 0 ? activeTasks[0] : null;
 
+  // Logika Hitung Progress Tugas & Sub-task secara Real-Time
+  let totalSubtasks = 0;
+  let completedSubtasks = 0;
+
+  tasks.forEach(t => {
+    if (t.subtasks && t.subtasks.length > 0) {
+      t.subtasks.forEach(st => {
+        totalSubtasks++;
+        if (st.completed) completedSubtasks++;
+      });
+    } else {
+      totalSubtasks++;
+      if (t.status === 'Selesai') completedSubtasks++;
+    }
+  });
+
+  const progressPercentage = totalSubtasks > 0 ? Math.round((completedSubtasks / totalSubtasks) * 100) : 0;
+
   const getCountdown = (targetDateStr) => {
     if (!targetDateStr) return null;
     const target = new Date(targetDateStr + 'T23:59:59');
@@ -324,7 +342,6 @@ export default function App() {
   };
 
   const nextClass = schedules.length > 0 ? schedules[0] : null;
-  const uniqueDays = Array.from(new Set(schedules.map(s => s.day_of_week))).join(' · ');
 
   const monthNames = [
     "JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI",
@@ -367,7 +384,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* WIDGET KELAS & MINI CARDS (CARD 1, CARD 2, CARD 3 LENGKAP) */}
+      {/* WIDGET KELAS & MINI CARDS */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
         
         {/* Card Utama Kelas Berikutnya */}
@@ -387,7 +404,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* 3 Mini Cards (Card 2 & Card 3 Status Absensi) */}
+        {/* 3 Mini Cards (Card 2 diubah jadi Progress Tugas) */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
           <div style={{ backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '14px', padding: '1rem', textAlign: 'center', border: '1px solid #8b5cf6' }}>
             <h3 style={{ margin: 0, fontSize: '1.8rem', color: '#a78bfa', fontWeight: '900' }}>{schedules.length}</h3>
@@ -395,9 +412,9 @@ export default function App() {
           </div>
 
           <div style={{ backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '14px', padding: '1rem', textAlign: 'center', border: '1px solid #22c55e' }}>
-            <h3 style={{ margin: 0, fontSize: '1.8rem', color: '#4ade80', fontWeight: '900' }}>{uniqueDays ? uniqueDays.split('·').length : 0}</h3>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>HARI KULIAH</span>
-            <div style={{ fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 'bold', marginTop: '0.2rem' }}>{uniqueDays || 'Belum Ada Jadwal'}</div>
+            <h3 style={{ margin: 0, fontSize: '1.8rem', color: '#4ade80', fontWeight: '900' }}>{progressPercentage}%</h3>
+            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>PROGRESS TUGAS</span>
+            <div style={{ fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 'bold', marginTop: '0.2rem' }}>{completedSubtasks} dari {totalSubtasks} selesai</div>
           </div>
 
           <div style={{ backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '14px', padding: '1rem', textAlign: 'center', border: nextClass?.attendance_status === 'SUDAH ABSEN' ? '1px solid #22c55e' : '1px solid #f97316', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
