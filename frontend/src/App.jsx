@@ -12,7 +12,9 @@ export default function App() {
   const [authToken, setAuthToken] = useState(localStorage.getItem('produser_token') || '');
   const [pinInput, setPinInput] = useState('');
   const [showPinModal, setShowPinModal] = useState(false);
-  const [activeTab, setActiveTab] = useState('monitor');
+  
+  // NAVBAR 6 TAB STATE
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [calendarFilter, setCalendarFilter] = useState('Semua');
 
   const [now, setNow] = useState(new Date());
@@ -33,16 +35,33 @@ export default function App() {
   const [aiDraftSubtasks, setAiDraftSubtasks] = useState([]);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
 
-  // Form State Upload Insight
-  const [insightFile, setInsightFile] = useState(null);
-  const [insightText, setInsightText] = useState('');
-  const [insightSource, setInsightSource] = useState('');
-  const [isUploadingInsight, setIsUploadingInsight] = useState(false);
+  // --- UNIFIED WORKSPACE STATE ---
+  const [workspaceMode, setWorkspaceMode] = useState('notes'); // 'notes' atau 'file'
+  
+  // Sub-state: Ketik Catatan Lisan
+  const [noteCourse, setNoteCourse] = useState('');
+  const [noteMeetingNo, setNoteMeetingNo] = useState(1);
+  const [rawNotesInput, setRawNotesInput] = useState('');
+  const [visualNotesOutput, setVisualNotesOutput] = useState('');
+  const [isFormattingNotes, setIsFormattingNotes] = useState(false);
+
+  // Sub-state: Upload File Materi
+  const [fileCourse, setFileCourse] = useState('');
+  const [fileMeetingNo, setFileMeetingNo] = useState(1);
+  const [workspaceFile, setWorkspaceFile] = useState(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [fileExtractionResult, setFileExtractionResult] = useState('');
+
+  // FLAG PENJAGA BUG DROPDOWN POLING
+  const [isInitialCourseLoaded, setIsInitialCourseLoaded] = useState(false);
+
+  // Filter Mata Kuliah di Tab Library
+  const [libraryCourseFilter, setLibraryCourseFilter] = useState('SEMUA');
 
   // Pop-up Detail Item (Klik Kalender)
   const [selectedCalendarItem, setSelectedCalendarItem] = useState(null);
 
-  // Pop-up Kontrol Absensi Interaktif (Klik Card 3)
+  // Pop-up Kontrol Absensi Interaktif
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
 
   // Form State Schedule (Produser Mode)
@@ -53,6 +72,17 @@ export default function App() {
   const [startTime, setStartTime] = useState('07:00');
   const [endTime, setEndTime] = useState('09:30');
   const [meetingNo, setMeetingNo] = useState(1);
+
+  // --- ACADEMIC ARCADE ENGINE STATES ---
+  const [arcadeCourse, setArcadeCourse] = useState('');
+  const [arcadeMeeting, setArcadeMeeting] = useState('1');
+  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
+  const [quizData, setQuizData] = useState(null);
+  const [arcadeStep, setArcadeStep] = useState(1);
+  const [userQuizAnswers, setUserQuizAnswers] = useState({});
+  const [userSparringAnswer, setUserSparringAnswer] = useState('');
+  const [isEvaluatingSparring, setIsEvaluatingSparring] = useState(false);
+  const [sparringEvaluation, setSparringEvaluation] = useState(null);
 
   useEffect(() => {
     document.body.style.backgroundColor = '#060913';
@@ -69,7 +99,16 @@ export default function App() {
       ]);
       if (resTasks.ok) setTasks(await resTasks.json());
       if (resInsights.ok) setKnowledgeBase(await resInsights.json());
-      if (resSched.ok) setSchedules(await resSched.json());
+      if (resSched.ok) {
+        const schedData = await resSched.json();
+        setSchedules(schedData);
+        if (schedData.length > 0 && !isInitialCourseLoaded) {
+          setNoteCourse(schedData[0].course_name);
+          setFileCourse(schedData[0].course_name);
+          setArcadeCourse(schedData[0].course_name);
+          setIsInitialCourseLoaded(true);
+        }
+      }
     } catch (err) {
       console.error("Gagal mengambil data server:", err);
     } finally {
@@ -81,69 +120,311 @@ export default function App() {
     fetchData();
     const interval = setInterval(fetchData, 4000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isInitialCourseLoaded]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // --- HANDLER HAPUS PER-ITEM (CRUD DELETE) ---
-  const handleDeleteTask = async (taskId, e) => {
-    if (e) e.stopPropagation();
-    if (!isAdmin) {
-      alert("🔒 Akses ditolak! Masuk sebagai Produser terlebih dahulu untuk menghapus tugas.");
+  // --- HANDLER ACADEMIC ARCADE ---
+  const handleStartArcadeQuiz = async () => {
+    if (!arcadeCourse) { alert("Pilih Mata Kuliah terlebih dahulu!"); return; }
+    setIsGeneratingQuiz(true);
+    setQuizData(null);
+    setArcadeStep(1);
+    setUserQuizAnswers({});
+    setUserSparringAnswer('');
+    setSparringEvaluation(null);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/arcade/generate-quiz`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ course_name: arcadeCourse, meeting_no: arcadeMeeting })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setQuizData(data.data);
+      } else {
+        alert(`⚠️ ${data.error || 'Gagal menyusun kuis.'}`);
+      }
+    } catch (err) {
+      alert("Gagal menghubungi server Arcade.");
+    } finally {
+      setIsGeneratingQuiz(false);
+    }
+  };
+
+  const handleSelectQuizOption = (questionId, optionIdx) => {
+    setUserQuizAnswers(prev => ({ ...prev, [questionId]: optionIdx }));
+  };
+
+  const handleSubmitSparring = async () => {
+    if (!userSparringAnswer.trim()) { alert("Ketik jawaban studi kasusmu dulu!"); return; }
+    setIsEvaluatingSparring(true);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/arcade/evaluate-sparring`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: quizData.fase3_sparring_question,
+          user_answer: userSparringAnswer
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSparringEvaluation(data.evaluation);
+        setArcadeStep(4);
+      } else {
+        alert(`⚠️ ${data.error || 'Gagal mengevaluasi jawaban.'}`);
+      }
+    } catch (err) {
+      alert("Gagal menghubungi server evaluasi.");
+    } finally {
+      setIsEvaluatingSparring(false);
+    }
+  };
+
+  const calculateQuizScore = () => {
+    if (!quizData || !quizData.fase2_quiz) return 0;
+    let correctCount = 0;
+    quizData.fase2_quiz.forEach(q => {
+      if (userQuizAnswers[q.id] === q.correct_index) correctCount++;
+    });
+    return Math.round((correctCount / quizData.fase2_quiz.length) * 100);
+  };
+
+  // --- SAKELAR LIBUR & SWITCHER PEKAN ---
+  const handleToggleCancelCourse = async (scheduleId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/schedules/toggle-cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ schedule_id: scheduleId })
+      });
+      if (res.ok) {
+        fetchData();
+      } else if (res.status === 401) {
+        alert("🔒 Sesi Produser habis, silakan login lagi.");
+        setIsAdmin(false);
+      }
+    } catch (err) {
+      alert("Gagal mengubah sakelar libur.");
+    }
+  };
+
+  const handleSetWeekType = async (type) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/settings/week-type`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ week_type: type })
+      });
+      if (res.ok) {
+        fetchData();
+      } else if (res.status === 401) {
+        alert("🔒 Sesi Produser habis, silakan login lagi.");
+        setIsAdmin(false);
+      }
+    } catch (err) {
+      alert("Gagal memperbarui mode pekan.");
+    }
+  };
+
+  // --- PARSER RENDER CLEAN FORMATTING BAGAN VISUAL AI ---
+  const renderFormattedNotes = (text) => {
+    if (!text) return null;
+    const lines = text.split('\n');
+
+    return lines.map((line, index) => {
+      let trimmed = line.trim();
+      if (!trimmed) return <div key={index} style={{ height: '8px' }} />;
+
+      if (trimmed === '---') {
+        return <hr key={index} style={{ border: 'none', borderTop: '1px solid #ec4899', margin: '1rem 0', opacity: 0.5 }} />;
+      }
+
+      const isHeader = trimmed.startsWith('#');
+      if (isHeader) {
+        const cleanHeader = trimmed.replace(/^#+\s*/, '').replace(/\*\*/g, '');
+        return (
+          <h4 key={index} style={{ color: '#ec4899', fontSize: '1.05rem', fontWeight: '800', margin: '0.8rem 0 0.4rem 0', letterSpacing: '0.5px' }}>
+            📌 {cleanHeader}
+          </h4>
+        );
+      }
+
+      if (trimmed.startsWith('*') && trimmed.endsWith('*') && !trimmed.startsWith('* ')) {
+        const cleanSub = trimmed.replace(/^\*|\*$/g, '');
+        return (
+          <p key={index} style={{ color: '#38bdf8', fontStyle: 'italic', margin: '0 0 0.8rem 0', fontSize: '0.85rem' }}>
+            {cleanSub}
+          </p>
+        );
+      }
+
+      const isBullet = trimmed.startsWith('* ') || trimmed.startsWith('- ');
+      if (isBullet) {
+        let content = trimmed.replace(/^[*|-]\s*/, '');
+        const parts = content.split(/(\*\*.*?\*\*)/g);
+
+        return (
+          <div key={index} style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.5rem', marginBottom: '0.4rem', fontSize: '0.88rem', color: '#cbd5e1' }}>
+            <span style={{ color: '#4ade80' }}>⚡</span>
+            <div>
+              {parts.map((part, pIdx) => {
+                if (part.startsWith('**') && part.endsWith('**')) {
+                  return <strong key={pIdx} style={{ color: '#facc15', fontWeight: 'bold' }}>{part.slice(2, -2)}</strong>;
+                }
+                return part;
+              })}
+            </div>
+          </div>
+        );
+      }
+
+      const parts = trimmed.split(/(\*\*.*?\*\*|`.*?`)/g);
+      return (
+        <p key={index} style={{ margin: '0.3rem 0', color: '#cbd5e1', fontSize: '0.88rem', lineHeight: '1.5' }}>
+          {parts.map((part, pIdx) => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+              return <u key={pIdx} style={{ color: '#4ade80', fontWeight: 'bold', textDecorationColor: '#ec4899' }}>{part.slice(2, -2)}</u>;
+            }
+            if (part.startsWith('`') && part.endsWith('`')) {
+              return <span key={pIdx} style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '0.1rem 0.4rem', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.82rem' }}>{part.slice(1, -1)}</span>;
+            }
+            return part;
+          })}
+        </p>
+      );
+    });
+  };
+
+  // --- HANDLER WORKSPACE (NOTES KETIKAN & FILE UPLOAD) ---
+  const handleAiFormatNotes = async () => {
+    if (!rawNotesInput.trim()) { alert("Ketik catatan mentah kamu dulu!"); return; }
+    setIsFormattingNotes(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/ai/format-notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ raw_notes: rawNotesInput })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setVisualNotesOutput(data.formatted_notes);
+      } else {
+        alert("⚠️ Gagal memformat catatan AI.");
+      }
+    } catch (err) {
+      alert("Error memproses AI notes.");
+    } finally {
+      setIsFormattingNotes(false);
+    }
+  };
+
+  const handleSaveSmartNotes = async () => {
+    if (!rawNotesInput.trim()) { alert("Catatan tidak boleh kosong!"); return; }
+    try {
+      const notePayload = {
+        course_name: noteCourse,
+        meeting_no: parseInt(noteMeetingNo),
+        raw_notes: rawNotesInput,
+        structured_visual_notes: visualNotesOutput
+      };
+
+      const resNotes = await fetch(`${API_BASE_URL}/api/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(notePayload)
+      });
+
+      // Simpan juga ke Knowledge Base (Library) dengan label spesifik Notes
+      const insightPayload = new FormData();
+      const contentToSave = visualNotesOutput ? visualNotesOutput : rawNotesInput;
+      insightPayload.append('text', contentToSave);
+      insightPayload.append('source', `📝 NOTES KETIKAN: ${noteCourse} (Pertemuan ${noteMeetingNo})`);
+
+      const resInsight = await fetch(`${API_BASE_URL}/api/insights/upload`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${authToken}` },
+        body: insightPayload
+      });
+
+      if (resNotes.ok || resInsight.ok) {
+        alert(`✅ Catatan ${noteCourse} Pertemuan ${noteMeetingNo} Berhasil Disimpan sebagai Notes Ketikan!`);
+        fetchData();
+      }
+    } catch (err) {
+      alert("Gagal menyimpan catatan ke Library.");
+    }
+  };
+
+  const handleUploadWorkspaceFile = async () => {
+    if (!workspaceFile || !fileCourse) {
+      alert("Pilih file materi dan tentukan Mata Kuliah terlebih dahulu!");
       return;
     }
+    setIsUploadingFile(true);
+    setFileExtractionResult('');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', workspaceFile);
+      formData.append('course_name', fileCourse);
+      formData.append('meeting_no', fileMeetingNo);
+
+      const res = await fetch(`${API_BASE_URL}/api/workspace/upload-file`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setFileExtractionResult(data.extracted_text);
+        alert(`✅ Materi file berhasil diekstrak dan disimpan mendalam ke Library!`);
+        setWorkspaceFile(null);
+        document.getElementById('workspaceFileInput').value = '';
+        fetchData();
+      } else {
+        alert(`⚠️ Gagal ekstrak file: ${data.error || 'Error tidak diketahui'}`);
+      }
+    } catch (err) {
+      alert("Gagal menghubungi server backend.");
+    } finally {
+      setIsUploadingFile(false);
+    }
+  };
+
+  // --- HANDLER HAPUS PER-ITEM ---
+  const handleDeleteTask = async (taskId, e) => {
+    if (e) e.stopPropagation();
+    if (!isAdmin) { alert("🔒 Akses ditolak! Masuk sebagai Produser terlebih dahulu."); return; }
     if (!window.confirm("Apakah kamu yakin ingin menghapus tugas ini?")) return;
     try {
       const res = await fetch(`${API_BASE_URL}/api/tasks/${taskId}`, { method: 'DELETE' });
-      if (res.ok) {
-        setSelectedCalendarItem(null);
-        fetchData();
-      } else {
-        alert("Gagal menghapus tugas.");
-      }
-    } catch (err) {
-      alert("Error menghapus tugas.");
-    }
+      if (res.ok) { setSelectedCalendarItem(null); fetchData(); }
+    } catch (err) { alert("Error menghapus tugas."); }
   };
 
   const handleDeleteInsight = async (insightId) => {
-    if (!isAdmin) {
-      alert("🔒 Akses ditolak! Masuk sebagai Produser terlebih dahulu.");
-      return;
-    }
-    if (!window.confirm("Apakah kamu yakin ingin menghapus catatan insight ini?")) return;
+    if (!isAdmin) { alert("🔒 Akses ditolak! Masuk sebagai Produser terlebih dahulu."); return; }
+    if (!window.confirm("Apakah kamu yakin ingin menghapus item ini dari Library?")) return;
     try {
       const res = await fetch(`${API_BASE_URL}/api/insights/${insightId}`, { method: 'DELETE' });
-      if (res.ok) {
-        fetchData();
-      } else {
-        alert("Gagal menghapus insight.");
-      }
-    } catch (err) {
-      alert("Error menghapus insight.");
-    }
+      if (res.ok) { fetchData(); }
+    } catch (err) { alert("Error menghapus insight."); }
   };
 
   const handleDeleteSchedule = async (scheduleId) => {
-    if (!isAdmin) {
-      alert("🔒 Akses ditolak! Masuk sebagai Produser terlebih dahulu untuk menghapus jadwal kuliah.");
-      return;
-    }
+    if (!isAdmin) { alert("🔒 Akses ditolak! Masuk sebagai Produser terlebih dahulu."); return; }
     if (!window.confirm("Apakah kamu yakin ingin menghapus jadwal kuliah ini?")) return;
     try {
       const res = await fetch(`${API_BASE_URL}/api/schedules/${scheduleId}`, { method: 'DELETE' });
-      if (res.ok) {
-        setSelectedCalendarItem(null);
-        fetchData();
-      } else {
-        alert("Gagal menghapus jadwal.");
-      }
-    } catch (err) {
-      alert("Error menghapus jadwal.");
-    }
+      if (res.ok) { setSelectedCalendarItem(null); fetchData(); }
+    } catch (err) { alert("Error menghapus jadwal."); }
   };
 
   const activeTasks = tasks.filter(t => t.status !== 'Selesai');
@@ -179,21 +460,13 @@ export default function App() {
   };
 
   const handlePrevMonth = () => {
-    if (currentMonth === 0) {
-      setCurrentMonth(11);
-      setCurrentYear(currentYear - 1);
-    } else {
-      setCurrentMonth(currentMonth - 1);
-    }
+    if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(currentYear - 1); }
+    else { setCurrentMonth(currentMonth - 1); }
   };
 
   const handleNextMonth = () => {
-    if (currentMonth === 11) {
-      setCurrentMonth(0);
-      setCurrentYear(currentYear + 1);
-    } else {
-      setCurrentMonth(currentMonth + 1);
-    }
+    if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(currentYear + 1); }
+    else { setCurrentMonth(currentMonth + 1); }
   };
 
   const playControlRoomBeep = () => {
@@ -201,15 +474,12 @@ export default function App() {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
-      
       osc.type = 'sine';
       osc.frequency.setValueAtTime(880, audioCtx.currentTime);
       gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
-      
       osc.connect(gain);
       gain.connect(audioCtx.destination);
-      
       osc.start();
       osc.stop(audioCtx.currentTime + 0.1);
     } catch (e) {}
@@ -218,19 +488,14 @@ export default function App() {
   const handleToggleAttendance = async (schedId) => {
     playControlRoomBeep();
     if (navigator.vibrate) navigator.vibrate(50);
-
     try {
       const res = await fetch(`${API_BASE_URL}/api/attendance/toggle`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ schedule_id: schedId })
       });
-      if (res.ok) {
-        fetchData();
-      }
-    } catch (err) {
-      console.error("Toggle attendance error:", err);
-    }
+      if (res.ok) { fetchData(); }
+    } catch (err) { console.error("Toggle attendance error:", err); }
   };
 
   const handleGenerateAiSubtasks = async () => {
@@ -255,61 +520,18 @@ export default function App() {
         alert(`⚠️ AI gagal bikin breakdown: ${data.error || 'Error tidak diketahui'}`);
       }
     } catch (err) {
-      alert("Gagal menghubungi server AI. Cek koneksi backend.");
+      alert("Gagal menghubungi server AI.");
     } finally {
       setIsGeneratingAi(false);
     }
   };
 
-  const handleUploadInsight = async () => {
-    if (!insightFile && !insightText.trim()) {
-      alert("Isi minimal salah satu: pilih file/foto, atau ketik catatan manual.");
-      return;
-    }
-    setIsUploadingInsight(true);
-    try {
-      const formData = new FormData();
-      if (insightFile) formData.append('file', insightFile);
-      if (insightText.trim()) formData.append('text', insightText.trim());
-      if (insightSource.trim()) formData.append('source', insightSource.trim());
-
-      const res = await fetch(`${API_BASE_URL}/api/insights/upload`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${authToken}` },
-        body: formData
-      });
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        alert(`✅ ${data.entries.length} insight berhasil disimpan!`);
-        setInsightFile(null);
-        setInsightText('');
-        setInsightSource('');
-        document.getElementById('insightFileInput').value = '';
-        fetchData();
-      } else if (res.status === 401) {
-        alert("🔒 Sesi Produser sudah habis, login ulang ya.");
-        setIsAdmin(false);
-      } else {
-        alert(`⚠️ Gagal simpan insight: ${data.error || 'Error tidak diketahui'}`);
-      }
-    } catch (err) {
-      alert("Gagal menghubungi server. Cek koneksi backend.");
-    } finally {
-      setIsUploadingInsight(false);
-    }
-  };
-
   const handleAddCustomSubtask = () => {
-    setAiDraftSubtasks([
-      ...aiDraftSubtasks,
-      { title: '', deadline: deadline || '2026-09-20' }
-    ]);
+    setAiDraftSubtasks([...aiDraftSubtasks, { title: '', deadline: deadline || '2026-09-20' }]);
   };
 
   const handleRemoveSubtask = (index) => {
-    const updated = aiDraftSubtasks.filter((_, idx) => idx !== index);
-    setAiDraftSubtasks(updated);
+    setAiDraftSubtasks(aiDraftSubtasks.filter((_, idx) => idx !== index));
   };
 
   const handleSaveTaskPermanent = async () => {
@@ -342,12 +564,8 @@ export default function App() {
         alert("🎉 Tugas Berhasil Ditandai Selesai!");
         setSelectedCalendarItem(null);
         fetchData();
-      } else {
-        alert("Gagal memperbarui tugas.");
       }
-    } catch (err) {
-      alert("Gagal menghubungi server.");
-    }
+    } catch (err) { alert("Gagal memperbarui tugas."); }
   };
 
   const handleToggleSubtaskFromModal = async (subtaskId, currentCompleted) => {
@@ -357,34 +575,19 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: subtaskId, completed: !currentCompleted })
       });
-      if (res.ok) {
-        setSelectedCalendarItem(null);
-        fetchData();
-      } else {
-        alert("Gagal memperbarui sub-task.");
-      }
-    } catch (err) {
-      alert("Gagal menghubungi server.");
-    }
+      if (res.ok) { setSelectedCalendarItem(null); fetchData(); }
+    } catch (err) { alert("Gagal menghubungi server."); }
   };
 
   const handleClearAllData = async () => {
-    if (!window.confirm("⚠️ PERINGATAN PRODUSER: Apakah kamu yakin ingin MENGHAPUS SELURUH DATA (Semua Tugas & Semua Jadwal Kuliah) dari database SQLite?")) return;
+    if (!window.confirm("⚠️ PERINGATAN PRODUSER: Apakah kamu yakin ingin MENGHAPUS SELURUH DATA dari database SQLite?")) return;
     try {
       const res = await fetch(`${API_BASE_URL}/api/data/clear-all`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${authToken}` }
       });
-      if (res.ok) {
-        alert("🗑️ Seluruh Data Berhasil Dibersihkan!");
-        fetchData();
-      } else if (res.status === 401) {
-        alert("🔒 Sesi Produser sudah habis, login ulang ya.");
-        setIsAdmin(false);
-      }
-    } catch (err) {
-      alert("Gagal menghapus seluruh data.");
-    }
+      if (res.ok) { alert("🗑️ Seluruh Data Berhasil Dibersihkan!"); fetchData(); }
+    } catch (err) { alert("Gagal menghapus seluruh data."); }
   };
 
   const handleAddSchedule = async (e) => {
@@ -400,9 +603,6 @@ export default function App() {
         alert("✅ Jadwal Kuliah Berhasil Disimpan!");
         setCourseName(''); setLecturerName(''); setRoom('');
         fetchData();
-      } else if (res.status === 401) {
-        alert("🔒 Sesi Produser sudah habis, login ulang ya.");
-        setIsAdmin(false);
       }
     } catch (err) { console.error("Error add schedule:", err); }
   };
@@ -420,7 +620,7 @@ export default function App() {
         setIsAdmin(true);
         setAuthToken(data.token);
         localStorage.setItem('produser_token', data.token);
-        setShowPinModal(false); setPinInput(''); setActiveTab('input');
+        setShowPinModal(false); setPinInput(''); setActiveTab('producer');
       } else { alert('🔒 PIN Salah!'); }
     } catch (err) { alert('Gagal menghubungi server auth.'); }
   };
@@ -429,20 +629,32 @@ export default function App() {
   const todayDayName = dayNames[now.getDay()];
 
   const todaySchedules = schedules.filter(s => (s.day_of_week || '').trim().toLowerCase() === todayDayName.toLowerCase());
+  const activeTodaySchedules = todaySchedules.filter(s => !s.is_cancelled);
   
-  const uncompletedTodayClass = todaySchedules.find(s => {
+  const uncompletedTodayClass = activeTodaySchedules.find(s => {
     const st = (s.attendance_status || '').toUpperCase();
     return st !== 'SUDAH ABSEN' && st !== 'SUDAH' && s.is_attended !== true && s.is_attended !== 1;
   });
 
-  const globalUncompletedClass = schedules.find(s => {
-    const st = (s.attendance_status || '').toUpperCase();
-    return st !== 'SUDAH ABSEN' && st !== 'SUDAH' && s.is_attended !== true && s.is_attended !== 1;
-  });
+  const getNextUpcomingClass = () => {
+    if (activeTodaySchedules.length > 0 && uncompletedTodayClass) {
+      return uncompletedTodayClass;
+    }
+    const currentDayIdx = now.getDay();
+    for (let offset = 1; offset <= 7; offset++) {
+      const targetDayIdx = (currentDayIdx + offset) % 7;
+      const targetDayName = dayNames[targetDayIdx];
+      const found = schedules.find(s => (s.day_of_week || '').trim().toLowerCase() === targetDayName.toLowerCase() && !s.is_cancelled);
+      if (found) return found;
+    }
+    return schedules.find(s => !s.is_cancelled) || null;
+  };
 
-  const nextClass = uncompletedTodayClass || globalUncompletedClass || (schedules.length > 0 ? schedules[0] : null);
-  
+  const nextClass = getNextUpcomingClass();
   const isClassToday = nextClass && (nextClass.day_of_week || '').trim().toLowerCase() === todayDayName.toLowerCase();
+  const globalWeekType = schedules.length > 0 ? (schedules[0].week_type || 'REGULAR') : 'REGULAR';
+
+  const uniqueCoursesFromSchedules = Array.from(new Set(schedules.map(s => s.course_name))).filter(Boolean);
 
   const monthNames = [
     "JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI",
@@ -455,27 +667,52 @@ export default function App() {
     <div style={{ backgroundColor: '#060913', color: '#f8fafc', minHeight: '100vh', padding: '1.2rem', fontFamily: 'sans-serif', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
       
       <div style={{ flex: 1 }}>
-        {/* HEADER */}
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.8rem' }}>
+        {/* HEADER & MAIN NAVIGATION BAR */}
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', flexWrap: 'wrap', gap: '0.8rem' }}>
           <div>
-            <h1 style={{ margin: 0, color: '#ec4899', fontSize: '1.8rem', fontWeight: '800' }}>ROAD TO S.I.Kom</h1>
-            <p style={{ margin: 0, color: '#38bdf8', fontSize: '0.8rem', fontWeight: '700' }}>JURNAL PINTAR & CONTROL ROOM</p>
+            <h1 style={{ margin: 0, color: '#ec4899', fontSize: '1.8rem', fontWeight: '800' }}>ROAD TO S.I.Kom 🎬</h1>
+            <p style={{ margin: 0, color: '#38bdf8', fontSize: '0.8rem', fontWeight: '700' }}>
+              JURNAL PINTAR & CONTROL ROOM 
+              {globalWeekType !== 'REGULAR' && (
+                <span style={{ backgroundColor: '#ef4444', color: '#fff', padding: '0.1rem 0.5rem', borderRadius: '4px', marginLeft: '0.5rem', fontSize: '0.7rem', fontWeight: '900' }}>
+                  🚨 MODE {globalWeekType}
+                </span>
+              )}
+            </p>
           </div>
+
+          <nav style={{ display: 'flex', gap: '0.4rem', backgroundColor: '#0f172a', padding: '0.3rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', flexWrap: 'wrap' }}>
+            {[
+              { id: 'dashboard', label: '📊 Dashboard' },
+              { id: 'workspace', label: '📝 Workspace' },
+              { id: 'library', label: '📚 Library' },
+              { id: 'arcade', label: '🎮 Arcade' },
+              { id: 'tasks', label: '📋 Tasks' },
+              { id: 'producer', label: '🎬 Produser' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                style={{
+                  backgroundColor: activeTab === tab.id ? '#ec4899' : 'transparent',
+                  color: activeTab === tab.id ? '#fff' : '#94a3b8',
+                  border: 'none', padding: '0.5rem 0.9rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem'
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+
           <div style={{ display: 'flex', gap: '0.6rem' }}>
-            {isAdmin && (
-              <div style={{ backgroundColor: '#0f172a', padding: '0.2rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                <button onClick={() => setActiveTab('monitor')} style={{ backgroundColor: activeTab === 'monitor' ? '#ec4899' : 'transparent', color: '#fff', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Monitor</button>
-                <button onClick={() => setActiveTab('input')} style={{ backgroundColor: activeTab === 'input' ? '#ec4899' : 'transparent', color: '#fff', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Input & Produser</button>
-              </div>
-            )}
             <button onClick={() => isAdmin ? setIsAdmin(false) : setShowPinModal(true)} style={{ backgroundColor: isAdmin ? 'rgba(21,128,61,0.3)' : '#0f172a', color: isAdmin ? '#4ade80' : '#94a3b8', border: '1px solid rgba(255,255,255,0.1)', padding: '0.4rem 1rem', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold' }}>
               {isAdmin ? "🔓 PRODUSER" : "🔒 PUBLIC"}
             </button>
           </div>
         </header>
 
-        {/* AIRTIME TICKER BAR */}
-        <div style={{ backgroundColor: '#0f172a', border: '1px solid #eab308', borderRadius: '12px', padding: '0.8rem 1.2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+        {/* --- AIRTIME TICKER BAR --- */}
+        <div style={{ backgroundColor: '#0f172a', border: '1px solid #eab308', borderRadius: '12px', padding: '0.8rem 1.2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.5rem', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', flexWrap: 'wrap' }}>
             <span style={{ backgroundColor: '#eab308', color: '#000', padding: '0.2rem 0.6rem', borderRadius: '6px', fontWeight: '900', fontSize: '0.85rem' }}>⚠️ AIRTIME WARNING</span>
             <span style={{ color: '#facc15', fontFamily: 'monospace', fontWeight: 'bold', fontSize: '1rem' }}>
@@ -488,95 +725,66 @@ export default function App() {
           </div>
         </div>
 
-        {/* WIDGET KELAS & MINI CARDS */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
-          
-          <div style={{ backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '16px', display: 'flex', overflow: 'hidden', border: '1px solid #0284c7', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', flexWrap: 'wrap' }}>
-            <div style={{ backgroundColor: '#0284c7', color: '#ffffff', padding: '1.2rem 1.8rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: '160px' }}>
-              <span style={{ fontSize: '0.7rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>KELAS BERIKUTNYA</span>
-              <span style={{ fontSize: '1.3rem', fontWeight: '900', marginTop: '0.2rem' }}>
-                {isClassToday ? `Hari ini, pukul ${nextClass ? nextClass.start_time : '07:00'}` : `Besok, pukul ${nextClass ? nextClass.start_time : '07:00'}`}
-              </span>
-            </div>
-            <div style={{ padding: '1.2rem 1.8rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1 }}>
-              <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: '800', color: '#38bdf8' }}>{nextClass ? nextClass.course_name : 'Metode Penelitian Komunikasi Kuantitatif'}</h2>
-              <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap', fontSize: '0.85rem', color: '#94a3b8', fontWeight: '600' }}>
-                <span style={{ backgroundColor: 'rgba(2,132,199,0.2)', color: '#38bdf8', padding: '0.2rem 0.6rem', borderRadius: '6px', fontWeight: 'bold' }}>{nextClass ? `${nextClass.start_time} – ${nextClass.end_time}` : '07:00 – 09:30'}</span>
-                <span>{nextClass ? nextClass.room : 'Ruang R616 (H) Jakarta'}</span>
-                <span>• Pertemuan ke-{nextClass ? nextClass.meeting_no : 1}</span>
-                <span>• {nextClass ? nextClass.day_of_week : 'Rabu'}, {now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
-            <div style={{ backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '14px', padding: '1rem', textAlign: 'center', border: '1px solid #8b5cf6' }}>
-              <h3 style={{ margin: 0, fontSize: '1.8rem', color: '#a78bfa', fontWeight: '900' }}>{schedules.length}</h3>
-              <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>KELAS PER PEKAN</span>
-            </div>
-
-            <div style={{ backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '14px', padding: '1rem', textAlign: 'center', border: '1px solid #22c55e' }}>
-              <h3 style={{ margin: 0, fontSize: '1.8rem', color: '#4ade80', fontWeight: '900' }}>{progressPercentage}%</h3>
-              <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>PROGRESS TUGAS</span>
-              <div style={{ fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 'bold', marginTop: '0.2rem' }}>{completedSubtasks} dari {totalSubtasks} selesai</div>
-            </div>
-
-            {(() => {
-              const hasTodayClass = todaySchedules.length > 0;
-              const isTodayUncompleted = hasTodayClass && todaySchedules.some(s => {
-                const st = (s.attendance_status || '').toUpperCase();
-                return st !== 'SUDAH ABSEN' && st !== 'SUDAH' && s.is_attended !== true && s.is_attended !== 1;
-              });
-
-              return (
-                <div 
-                  onClick={() => setShowAttendanceModal(true)} 
-                  style={{ 
-                    backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '14px', padding: '1rem', 
-                    textAlign: 'center', 
-                    border: isTodayUncompleted ? '1px solid #f97316' : (hasTodayClass ? '1px solid #22c55e' : '1px solid #64748b'), 
-                    display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', 
-                    cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: '0 2px 10px rgba(0,0,0,0.3)' 
-                  }}
-                  title="Klik untuk atur absensi hari ini"
-                >
-                  <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>STATUS ABSENSI</span>
-                  
-                  <div style={{ display: 'flex', gap: '4px', margin: '0.4rem 0' }}>
-                    {hasTodayClass ? (
-                      todaySchedules.map((s, idx) => {
-                        const st = (s.attendance_status || '').toUpperCase();
-                        const isDone = st === 'SUDAH ABSEN' || st === 'SUDAH' || s.is_attended === true || s.is_attended === 1;
-                        return (
-                          <span key={idx} style={{ 
-                            width: '8px', height: '8px', borderRadius: '50%', 
-                            backgroundColor: isDone ? '#4ade80' : '#f97316',
-                            boxShadow: isDone ? '0 0 6px #4ade80' : '0 0 6px #f97316'
-                          }} title={s.course_name} />
-                        );
-                      })
-                    ) : (
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#64748b' }} title="Tidak ada kelas" />
-                    )}
-                  </div>
-
-                  <h4 style={{ margin: '0.1rem 0', color: isTodayUncompleted ? '#fb923c' : (hasTodayClass ? '#4ade80' : '#94a3b8'), fontSize: '0.85rem', fontWeight: '900' }}>
-                    {!hasTodayClass ? '☕ LIBUR HARI INI' : (isTodayUncompleted ? '⚠️ BELUM ABSEN' : '✨ ABSEN HARI INI AMAN')}
-                  </h4>
-                  
-                  <span style={{ fontSize: '0.7rem', color: '#38bdf8', fontWeight: 'bold', marginTop: '0.2rem', textDecoration: 'underline' }}>
-                    👆 Klik Atur Absen
+        {/* --- TAB 1: DASHBOARD --- */}
+        {activeTab === 'dashboard' && (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+              <div style={{ backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '16px', display: 'flex', overflow: 'hidden', border: '1px solid #0284c7', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', flexWrap: 'wrap' }}>
+                <div style={{ backgroundColor: nextClass ? '#0284c7' : '#64748b', color: '#ffffff', padding: '1.2rem 1.8rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: '160px' }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>KELAS BERIKUTNYA</span>
+                  <span style={{ fontSize: '1.3rem', fontWeight: '900', marginTop: '0.2rem' }}>
+                    {!nextClass ? 'Tidak Ada Kelas' : (isClassToday ? `Hari ini, pukul ${nextClass.start_time}` : `Besok, pukul ${nextClass.start_time}`)}
                   </span>
                 </div>
-              );
-            })()}
-          </div>
+                <div style={{ padding: '1.2rem 1.8rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1 }}>
+                  <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: '800', color: '#38bdf8' }}>{nextClass ? nextClass.course_name : '☕ Tidak ada perkuliahan aktif'}</h2>
+                  <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap', fontSize: '0.85rem', color: '#94a3b8', fontWeight: '600' }}>
+                    <span style={{ backgroundColor: 'rgba(2,132,199,0.2)', color: '#38bdf8', padding: '0.2rem 0.6rem', borderRadius: '6px', fontWeight: 'bold' }}>{nextClass ? `${nextClass.start_time} – ${nextClass.end_time}` : '--:--'}</span>
+                    <span>{nextClass ? nextClass.room : 'Platform Siaran'}</span>
+                    <span>• Pertemuan ke-{nextClass ? nextClass.meeting_no : 1}</span>
+                  </div>
+                </div>
+              </div>
 
-        </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+                <div style={{ backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '14px', padding: '1rem', textAlign: 'center', border: '1px solid #8b5cf6' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.8rem', color: '#a78bfa', fontWeight: '900' }}>{schedules.length}</h3>
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>KELAS PER PEKAN</span>
+                </div>
 
-        {/* KALENDER GRID INTERAKTIF DENGAN SUBTASK & KELAS */}
-        {activeTab === 'monitor' && (
-          <>
+                <div style={{ backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '14px', padding: '1rem', textAlign: 'center', border: '1px solid #22c55e' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.8rem', color: '#4ade80', fontWeight: '900' }}>{progressPercentage}%</h3>
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>PROGRESS TUGAS</span>
+                </div>
+
+                {(() => {
+                  const hasActiveTodayClass = activeTodaySchedules.length > 0;
+                  const isTodayUncompleted = hasActiveTodayClass && activeTodaySchedules.some(s => {
+                    const st = (s.attendance_status || '').toUpperCase();
+                    return st !== 'SUDAH ABSEN' && st !== 'SUDAH' && s.is_attended !== true && s.is_attended !== 1;
+                  });
+
+                  return (
+                    <div 
+                      onClick={() => setShowAttendanceModal(true)} 
+                      style={{ 
+                        backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '14px', padding: '1rem', 
+                        textAlign: 'center', border: isTodayUncompleted ? '1px solid #f97316' : '1px solid #22c55e', 
+                        cursor: 'pointer' 
+                      }}
+                    >
+                      <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>STATUS ABSENSI</span>
+                      <h4 style={{ margin: '0.4rem 0', color: isTodayUncompleted ? '#fb923c' : '#4ade80', fontSize: '0.85rem', fontWeight: '900' }}>
+                        {!hasActiveTodayClass ? '☕ LIBUR HARI INI' : (isTodayUncompleted ? '⚠️ BELUM ABSEN' : '✨ AMAN')}
+                      </h4>
+                      <span style={{ fontSize: '0.7rem', color: '#38bdf8', textDecoration: 'underline' }}>👆 Klik Atur Absen</span>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* KALENDER GRID */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
               <div style={{ display: 'flex', gap: '0.4rem', backgroundColor: '#0f172a', padding: '0.3rem', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
                 {['Semua', 'Mingguan', 'Bulanan'].map(f => (
@@ -586,9 +794,7 @@ export default function App() {
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                 <button onClick={handlePrevMonth} style={{ backgroundColor: '#1e293b', color: '#ec4899', border: '1px solid rgba(255,255,255,0.1)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>‹</button>
-                <h3 style={{ margin: 0, color: '#ec4899', fontSize: '1.1rem', fontWeight: '800', letterSpacing: '1px' }}>
-                  {monthNames[currentMonth]} {currentYear}
-                </h3>
+                <h3 style={{ margin: 0, color: '#ec4899', fontSize: '1.1rem', fontWeight: '800', letterSpacing: '1px' }}>{monthNames[currentMonth]} {currentYear}</h3>
                 <button onClick={handleNextMonth} style={{ backgroundColor: '#1e293b', color: '#ec4899', border: '1px solid rgba(255,255,255,0.1)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>›</button>
               </div>
             </div>
@@ -611,67 +817,25 @@ export default function App() {
                   const dStr = dayNum < 10 ? `0${dayNum}` : `${dayNum}`;
                   const dateStr = `${currentYear}-${mStr}-${dStr}`;
 
-                  const isTodayBox = 
-                    dayNum === now.getDate() && 
-                    currentMonth === now.getMonth() && 
-                    currentYear === now.getFullYear();
-
+                  const isTodayBox = dayNum === now.getDate() && currentMonth === now.getMonth() && currentYear === now.getFullYear();
                   const matchedTasks = tasks.filter(t => t.deadline === dateStr);
-                  
-                  const matchedSubtasks = [];
-                  tasks.forEach(t => {
-                    if (t.subtasks) {
-                      t.subtasks.forEach(st => {
-                        if (st.deadline === dateStr) {
-                          matchedSubtasks.push({ ...st, parentTaskTitle: t.title, parentTaskId: t.id });
-                        }
-                      });
-                    }
-                  });
-
-                  const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
                   const currentDayName = dayNames[new Date(currentYear, currentMonth, dayNum).getDay()];
                   const matchedSchedules = schedules.filter(s => s.day_of_week === currentDayName);
 
                   return (
-                    <div 
-                      key={dayNum} 
-                      style={{ 
-                        minHeight: '65px', 
-                        padding: '6px', 
-                        borderRadius: '8px', 
-                        backgroundColor: isTodayBox ? 'rgba(236, 72, 153, 0.12)' : 'rgba(30, 41, 59, 0.5)', 
-                        border: isTodayBox ? '2px solid #ec4899' : '1px solid rgba(255,255,255,0.06)',
-                        boxShadow: isTodayBox ? '0 0 12px rgba(236, 72, 153, 0.3)' : 'none',
-                        position: 'relative'
-                      }}
-                    >
+                    <div key={dayNum} style={{ minHeight: '65px', padding: '6px', borderRadius: '8px', backgroundColor: isTodayBox ? 'rgba(236, 72, 153, 0.12)' : 'rgba(30, 41, 59, 0.5)', border: isTodayBox ? '2px solid #ec4899' : '1px solid rgba(255,255,255,0.06)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-                        <span style={{ fontSize: '0.75rem', color: isTodayBox ? '#ec4899' : '#94a3b8', fontWeight: isTodayBox ? '900' : 'bold' }}>
-                          {dayNum}
-                        </span>
-                        {isTodayBox && (
-                          <span style={{ backgroundColor: '#ec4899', color: '#fff', fontSize: '0.45rem', padding: '1px 4px', borderRadius: '4px', fontWeight: '900', letterSpacing: '0.5px' }}>
-                            TODAY
-                          </span>
-                        )}
+                        <span style={{ fontSize: '0.75rem', color: isTodayBox ? '#ec4899' : '#94a3b8', fontWeight: isTodayBox ? '900' : 'bold' }}>{dayNum}</span>
                       </div>
                       
                       {matchedSchedules.map((s, idx) => (
-                        <div key={`sc-${idx}`} onClick={() => setSelectedCalendarItem({ type: 'SCHEDULE', data: s })} style={{ backgroundColor: '#0284c7', color: '#fff', fontSize: '0.55rem', padding: '2px 4px', borderRadius: '3px', marginTop: '2px', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                        <div key={`sc-${idx}`} onClick={() => setSelectedCalendarItem({ type: 'SCHEDULE', data: s })} style={{ backgroundColor: s.is_cancelled ? '#475569' : '#0284c7', color: '#fff', fontSize: '0.55rem', padding: '2px 4px', borderRadius: '3px', marginTop: '2px', fontWeight: 'bold', cursor: 'pointer' }}>
                           🎓 {s.course_name}
                         </div>
                       ))}
-
                       {matchedTasks.map((t, idx) => (
-                        <div key={`mt-${idx}`} onClick={() => setSelectedCalendarItem({ type: 'TASK', data: t })} style={{ backgroundColor: '#ec4899', color: '#fff', fontSize: '0.55rem', padding: '2px 4px', borderRadius: '3px', marginTop: '2px', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                        <div key={`mt-${idx}`} onClick={() => setSelectedCalendarItem({ type: 'TASK', data: t })} style={{ backgroundColor: '#ec4899', color: '#fff', fontSize: '0.55rem', padding: '2px 4px', borderRadius: '3px', marginTop: '2px', fontWeight: 'bold', cursor: 'pointer' }}>
                           📌 {t.title}
-                        </div>
-                      ))}
-
-                      {matchedSubtasks.map((st, idx) => (
-                        <div key={`st-${idx}`} onClick={() => setSelectedCalendarItem({ type: 'SUBTASK', data: st })} style={{ backgroundColor: '#9333ea', color: '#fff', fontSize: '0.52rem', padding: '2px 4px', borderRadius: '3px', marginTop: '2px', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}>
-                          🔹 {st.title}
                         </div>
                       ))}
                     </div>
@@ -679,317 +843,473 @@ export default function App() {
                 })}
               </div>
             </div>
-
-            {/* LIST MONITOR TUGAS DENGAN TOMBOL HAPUS (CRUD) */}
-            <div style={{ backgroundColor: '#0f172a', padding: '1.2rem', borderRadius: '16px' }}>
-              <h3 style={{ color: '#ec4899', marginTop: 0 }}>🎯 TASK & DEADLINE MONITOR (LIVE SQLITE)</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-                {tasks.length === 0 ? (
-                  <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Belum ada tugas terdaftar di database.</p>
-                ) : (
-                  tasks.map(t => (
-                    <div key={t.id} onClick={() => setSelectedCalendarItem({ type: 'TASK', data: t })} style={{ backgroundColor: '#1e293b', padding: '1rem', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid rgba(255,255,255,0.05)', flexWrap: 'wrap', gap: '0.5rem', cursor: 'pointer' }}>
-                      <div>
-                        <h4 style={{ margin: 0, color: '#f8fafc' }}>{t.title}</h4>
-                        <span style={{ fontSize: '0.75rem', color: '#38bdf8' }}>🏷️ {t.tag} • ⏰ Deadline: {t.deadline}</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                        <span style={{ backgroundColor: t.status === 'Selesai' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(234, 179, 8, 0.2)', color: t.status === 'Selesai' ? '#4ade80' : '#facc15', padding: '0.3rem 0.8rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 'bold' }}>{t.status}</span>
-                        <button onClick={(e) => handleDeleteTask(t.id, e)} style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid #ef4444', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.75rem' }} title="Hapus Tugas Ini">🗑️</button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* KNOWLEDGE BASE / INSIGHTS PANEL DENGAN TOMBOL HAPUS (CRUD) */}
-            <div style={{ backgroundColor: '#0f172a', padding: '1.2rem', borderRadius: '16px', marginTop: '1.5rem', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
-              <h3 style={{ color: '#a78bfa', marginTop: 0 }}>🧠 KNOWLEDGE BASE & INSIGHTS</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-                {knowledgeBase.length === 0 ? (
-                  <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Belum ada catatan/insight tersimpan.</p>
-                ) : (
-                  knowledgeBase.map((kb, idx) => (
-                    <div key={kb.id || idx} style={{ backgroundColor: '#1e293b', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)', position: 'relative' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.3rem' }}>
-                        <span style={{ fontSize: '0.7rem', color: '#a78bfa', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                          📌 {kb.source || 'Catatan Umum'}
-                        </span>
-                        {kb.id && isAdmin && (
-                          <button onClick={() => handleDeleteInsight(kb.id)} style={{ backgroundColor: 'transparent', color: '#ef4444', border: 'none', cursor: 'pointer', fontSize: '0.8rem' }} title="Hapus Insight Ini">🗑️ Hapus</button>
-                        )}
-                      </div>
-                      <p style={{ margin: 0, color: '#cbd5e1', fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{kb.text}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
           </>
         )}
 
-        {/* PRODUSER MODE FORMS */}
-        {activeTab === 'input' && isAdmin && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1rem' }}>
+        {/* --- TAB 2: UNIFIED WORKSPACE (NOTES KETIKAN & UPLOAD FILE MATERI) --- */}
+        {activeTab === 'workspace' && (
+          <div style={{ backgroundColor: '#0f172a', padding: '1.5rem', borderRadius: '16px', border: '1px solid #ec4899' }}>
+            <h2 style={{ color: '#ec4899', marginTop: 0 }}>📝 UNIFIED WORKSPACE: PUSAT PENGETAHUAN</h2>
+            <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '1rem' }}>Pilih metode input catatan lisan dosen atau upload file materi mendalam (PDF/Foto) per pertemuan (1–14).</p>
             
-            <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', border: '1px solid #ec4899', borderRadius: '16px', padding: '1.2rem' }}>
-              <h3 style={{ color: '#ec4899', marginTop: 0 }}>📌 PRODUSER MODE: Input Tugas & Breakdown AI</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.8rem' }}>
-                <input type="text" placeholder="Judul Tugas" value={title} onChange={e=>setTitle(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }} />
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                  <select value={tag} onChange={e=>setTag(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }}>
-                    <option value="Manajemen Penyiaran">Manajemen Penyiaran</option>
-                    <option value="Komunikasi Politik">Komunikasi Politik</option>
-                    <option value="Main Control Room">Main Control Room</option>
-                    <option value="Metode Penelitian Komunikasi Kuantitatif">Metode Penelitian Komunikasi Kuantitatif</option>
-                    <option value="Kewirausahaan 1">Kewirausahaan 1</option>
-                    <option value="Sistem Siaran TV dan Radio">Sistem Siaran TV dan Radio</option>
-                    <option value="CUSTOM">+ Tambah Matkul Custom...</option>
-                  </select>
-                  {tag === 'CUSTOM' && (
-                    <input type="text" placeholder="Ketik Nama Matkul Custom..." value={customTag} onChange={e=>setCustomTag(e.target.value)} style={{ padding: '0.5rem', backgroundColor: '#0f172a', border: '1px solid #ec4899', color: '#fff', borderRadius: '6px', fontSize: '0.85rem' }} />
-                  )}
-                </div>
-
-                <input type="date" value={deadline} onChange={e=>setDeadline(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }} />
-              </div>
-              
-              <textarea placeholder="Deskripsi Tugas / Catatan Khusus" value={description} onChange={e=>setDescription(e.target.value)} style={{ width: '100%', padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px', marginTop: '0.8rem', boxSizing: 'border-box' }} />
-              
-              <div style={{ display: 'flex', gap: '0.8rem', marginTop: '0.8rem' }}>
-                <button onClick={handleGenerateAiSubtasks} style={{ backgroundColor: '#ec4899', color: '#fff', border: 'none', padding: '0.7rem 1.2rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  {isGeneratingAi ? "⏳ AI Sedang Menyusun Breakdown..." : "⚡ Minta AI Buat Breakdown (Tahap 1)"}
-                </button>
-              </div>
-            </div>
-
-            <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', border: '1px solid #38bdf8', borderRadius: '16px', padding: '1.2rem' }}>
-              <h3 style={{ color: '#38bdf8', marginTop: 0 }}>📅 PRODUSER MODE: Input Jadwal Kuliah Utama</h3>
-              <form onSubmit={handleAddSchedule} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.8rem' }}>
-                <input type="text" placeholder="Nama Mata Kuliah" value={courseName} onChange={e=>setCourseName(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }} />
-                <input type="text" placeholder="Nama Dosen" value={lecturerName} onChange={e=>setLecturerName(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }} />
-                <input type="text" placeholder="Ruangan / Platform" value={room} onChange={e=>setRoom(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }} />
-                <select value={dayOfWeek} onChange={e=>setDayOfWeek(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }}>
-                  <option value="Senin">Senin</option><option value="Selasa">Selasa</option><option value="Rabu">Rabu</option><option value="Kamis">Kamis</option><option value="Jumat">Jumat</option><option value="Sabtu">Sabtu</option>
-                </select>
-                <div style={{ display: 'flex', gap: '0.4rem' }}>
-                  <input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} style={{ flex: 1, padding: '0.5rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '6px' }} />
-                  <input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} style={{ flex: 1, padding: '0.5rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '6px' }} />
-                </div>
-                <button type="submit" style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '0.7rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>💾 Simpan Jadwal Perkuliahan</button>
-              </form>
-            </div>
-
-            <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', border: '1px solid #a78bfa', borderRadius: '16px', padding: '1.2rem' }}>
-              <h3 style={{ color: '#a78bfa', marginTop: 0 }}>🧠 PRODUSER MODE: Tambah Insight / Materi</h3>
-              <p style={{ color: '#94a3b8', fontSize: '0.8rem', margin: '0 0 0.8rem 0' }}>
-                Upload foto/file materi (AI otomatis rangkum atau jawab kalau isinya soal), dan/atau ketik catatan manual. Semua masuk ke Knowledge Base yang sama dipakai bot Telegram.
-              </p>
-              <div style={{ display: 'grid', gap: '0.8rem' }}>
-                <input
-                  id="insightFileInput"
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.webp,.txt"
-                  onChange={e => setInsightFile(e.target.files[0] || null)}
-                  style={{ padding: '0.5rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }}
-                />
-                <input
-                  type="text"
-                  placeholder="Label/Sumber (opsional, misal: 'Metode Penelitian')"
-                  value={insightSource}
-                  onChange={e => setInsightSource(e.target.value)}
-                  style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }}
-                />
-                <textarea
-                  placeholder="Atau ketik catatan/jawaban manual di sini (opsional, gak wajib upload file)..."
-                  value={insightText}
-                  onChange={e => setInsightText(e.target.value)}
-                  rows={3}
-                  style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px', resize: 'vertical' }}
-                />
-                <button onClick={handleUploadInsight} disabled={isUploadingInsight} style={{ backgroundColor: '#8b5cf6', color: '#fff', border: 'none', padding: '0.7rem', borderRadius: '8px', fontWeight: 'bold', cursor: isUploadingInsight ? 'not-allowed' : 'pointer', opacity: isUploadingInsight ? 0.6 : 1 }}>
-                  {isUploadingInsight ? '⏳ Memproses...' : '📤 Simpan ke Knowledge Base'}
-                </button>
-              </div>
-            </div>
-
-            <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: '16px', padding: '1.2rem' }}>
-              <h4 style={{ color: '#ef4444', marginTop: 0, margin: '0 0 0.5rem 0' }}>⚠️ SYSTEM RESET CONTROL</h4>
-              <button onClick={handleClearAllData} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '0.7rem 1.2rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                🗑️ Hapus Seluruh Data (Tugas & Kuliah)
+            {/* SUB-PANEL SWITCHER */}
+            <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>
+              <button 
+                onClick={() => setWorkspaceMode('notes')} 
+                style={{ backgroundColor: workspaceMode === 'notes' ? '#ec4899' : '#1e293b', color: '#fff', border: 'none', padding: '0.6rem 1.2rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}
+              >
+                📝 Ketik Catatan Lisan (Smart Notes)
+              </button>
+              <button 
+                onClick={() => setWorkspaceMode('file')} 
+                style={{ backgroundColor: workspaceMode === 'file' ? '#8b5cf6' : '#1e293b', color: '#fff', border: 'none', padding: '0.6rem 1.2rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}
+              >
+                📄 Upload File Materi (Deep PDF/Foto Extraction)
               </button>
             </div>
 
+            {/* PANEL A: KETIK CATATAN LISAN */}
+            {workspaceMode === 'notes' && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: '#38bdf8', fontWeight: 'bold' }}>Pilih Matkul & Pertemuan:</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', margin: '0.4rem 0 1rem 0' }}>
+                    <select 
+                      value={noteCourse} 
+                      onChange={e => setNoteCourse(e.target.value)} 
+                      style={{ flex: 1, padding: '0.55rem', backgroundColor: '#1e293b', border: '1px solid #0284c7', color: '#fff', borderRadius: '6px', fontWeight: 'bold' }}
+                    >
+                      {uniqueCoursesFromSchedules.length > 0 ? (
+                        uniqueCoursesFromSchedules.map((cName, idx) => (
+                          <option key={idx} value={cName}>{cName}</option>
+                        ))
+                      ) : (
+                        <option value="Main Control Room">Main Control Room</option>
+                      )}
+                    </select>
+                    <input type="number" min="1" max="14" value={noteMeetingNo} onChange={e => setNoteMeetingNo(e.target.value)} style={{ width: '70px', padding: '0.5rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '6px' }} />
+                  </div>
+
+                  <textarea placeholder="Ketik catatan lisan mentah dosen di sini..." value={rawNotesInput} onChange={e => setRawNotesInput(e.target.value)} rows={12} style={{ width: '100%', padding: '0.8rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px', boxSizing: 'border-box', resize: 'vertical' }} />
+                  
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.8rem' }}>
+                    <button onClick={handleAiFormatNotes} disabled={isFormattingNotes} style={{ backgroundColor: '#ec4899', color: '#fff', border: 'none', padding: '0.6rem 1rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                      {isFormattingNotes ? '⏳ Merapikan...' : '⚡ Rapikan AI (Bagan Visual)'}
+                    </button>
+                    <button onClick={handleSaveSmartNotes} style={{ backgroundColor: '#22c55e', color: '#fff', border: 'none', padding: '0.6rem 1rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                      💾 Simpan Catatan
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: '#1e293b', padding: '1.2rem', borderRadius: '12px', border: '1px solid #334155', boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.4)' }}>
+                  <h4 style={{ color: '#4ade80', marginTop: 0, marginBottom: '0.8rem', borderBottom: '1px solid #334155', paddingBottom: '0.4rem' }}>✨ Hasil Bagan Visual AI:</h4>
+                  <div>
+                    {visualNotesOutput ? renderFormattedNotes(visualNotesOutput) : (
+                      <span style={{ color: '#64748b', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                        Hasil format visual akan tersusun rapi di sini...
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* PANEL B: UPLOAD FILE MATERI (DEEP EXTRACTION) */}
+            {workspaceMode === 'file' && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: '#a78bfa', fontWeight: 'bold' }}>Pilih Target Mata Kuliah & Pertemuan:</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', margin: '0.4rem 0 1rem 0' }}>
+                    <select 
+                      value={fileCourse} 
+                      onChange={e => setFileCourse(e.target.value)} 
+                      style={{ flex: 1, padding: '0.55rem', backgroundColor: '#1e293b', border: '1px solid #8b5cf6', color: '#fff', borderRadius: '6px', fontWeight: 'bold' }}
+                    >
+                      {uniqueCoursesFromSchedules.length > 0 ? (
+                        uniqueCoursesFromSchedules.map((cName, idx) => (
+                          <option key={idx} value={cName}>{cName}</option>
+                        ))
+                      ) : (
+                        <option value="Main Control Room">Main Control Room</option>
+                      )}
+                    </select>
+                    <input type="number" min="1" max="14" value={fileMeetingNo} onChange={e => setFileMeetingNo(e.target.value)} style={{ width: '70px', padding: '0.5rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '6px' }} />
+                  </div>
+
+                  <label style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'block', marginBottom: '0.4rem' }}>Upload File (PDF / Foto / TXT):</label>
+                  <input
+                    id="workspaceFileInput"
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp,.txt"
+                    onChange={e => setWorkspaceFile(e.target.files[0] || null)}
+                    style={{ width: '100%', padding: '0.8rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px', boxSizing: 'border-box', marginBottom: '1.2rem' }}
+                  />
+
+                  <button 
+                    onClick={handleUploadWorkspaceFile} 
+                    disabled={isUploadingFile} 
+                    style={{ backgroundColor: '#8b5cf6', color: '#fff', border: 'none', padding: '0.7rem 1.2rem', borderRadius: '8px', fontWeight: 'bold', cursor: isUploadingFile ? 'not-allowed' : 'pointer', width: '100%', opacity: isUploadingFile ? 0.6 : 1 }}
+                  >
+                    {isUploadingFile ? '⏳ AI Sedang Menguras Dokumen Secara Mendalam...' : '⚡ Ekstrak & Simpan ke Knowledge Base'}
+                  </button>
+                </div>
+
+                <div style={{ backgroundColor: '#1e293b', padding: '1.2rem', borderRadius: '12px', border: '1px solid #334155', boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.4)' }}>
+                  <h4 style={{ color: '#a78bfa', marginTop: 0, marginBottom: '0.8rem', borderBottom: '1px solid #334155', paddingBottom: '0.4rem' }}>📄 Hasil Ekstraksi Mendalam AI:</h4>
+                  <div>
+                    {fileExtractionResult ? renderFormattedNotes(fileExtractionResult) : (
+                      <span style={{ color: '#64748b', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                        Hasil bedah materi komprehensif dari file akan muncul di sini dan otomatis masuk ke Library & Arcade...
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* --- TAB 3: LIBRARY (DUAL-SOURCE BADGE PEMBEDAFAN VISUAL) --- */}
+        {activeTab === 'library' && (
+          <div style={{ backgroundColor: '#0f172a', padding: '1.2rem', borderRadius: '16px', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', flexWrap: 'wrap', gap: '0.8rem' }}>
+              <h3 style={{ color: '#a78bfa', margin: 0 }}>📚 DUAL-SOURCE KNOWLEDGE LIBRARY</h3>
+              
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'bold' }}>Filter Matkul:</span>
+                <select 
+                  value={libraryCourseFilter} 
+                  onChange={e => setLibraryCourseFilter(e.target.value)} 
+                  style={{ padding: '0.4rem 0.8rem', backgroundColor: '#1e293b', border: '1px solid #a78bfa', color: '#fff', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}
+                >
+                  <option value="SEMUA">🌐 Semua Mata Kuliah</option>
+                  {uniqueCoursesFromSchedules.map((cName, idx) => (
+                    <option key={idx} value={cName}>{cName}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {knowledgeBase.length === 0 ? (
+                <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Belum ada catatan atau file materi tersimpan.</p>
+              ) : (
+                knowledgeBase
+                  .filter(kb => {
+                    if (libraryCourseFilter === 'SEMUA') return true;
+                    return (kb.source || '').toLowerCase().includes(libraryCourseFilter.toLowerCase()) || (kb.course_name || '').toLowerCase().includes(libraryCourseFilter.toLowerCase());
+                  })
+                  .map((kb, idx) => {
+                    // Pembedaan Visual Card Berdasarkan Sumber
+                    const isFileSource = (kb.source || '').includes('MATERI FILE') || (kb.source || '').includes('FILE:');
+                    const cardBg = isFileSource ? '#1e1b4b' : '#042f2e'; // Ungu gelap untuk File, Cyan gelap untuk Notes Ketikan
+                    const badgeBg = isFileSource ? '#8b5cf6' : '#06b6d4';
+                    const badgeText = isFileSource ? '#fff' : '#000';
+                    const labelTitle = kb.source || (kb.course_name ? `${kb.course_name} (Pertemuan ${kb.meeting_no})` : 'Catatan Umum');
+
+                    return (
+                      <div key={kb.id || idx} style={{ backgroundColor: cardBg, padding: '1.2rem', borderRadius: '12px', border: isFileSource ? '1px solid #8b5cf6' : '1px solid #06b6d4', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.4rem' }}>
+                          <span style={{ backgroundColor: badgeBg, color: badgeText, padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            {isFileSource ? '📄 MATERI FILE' : '📝 NOTES KETIKAN'} — {labelTitle}
+                          </span>
+                          {kb.id && isAdmin && (
+                            <button onClick={() => handleDeleteInsight(kb.id)} style={{ backgroundColor: 'transparent', color: '#ef4444', border: 'none', cursor: 'pointer', fontSize: '0.8rem' }} title="Hapus Item">🗑️ Hapus</button>
+                          )}
+                        </div>
+                        <div style={{ color: '#cbd5e1', fontSize: '0.88rem' }}>
+                          {renderFormattedNotes(kb.text)}
+                        </div>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* --- TAB 4: ARCADE (3-FASE KUIS) --- */}
+        {activeTab === 'arcade' && (
+          <div style={{ backgroundColor: '#0f172a', padding: '1.5rem', borderRadius: '16px', border: '1px solid #eab308' }}>
+            <div style={{ borderBottom: '1px solid rgba(234, 179, 8, 0.3)', paddingBottom: '1rem', marginBottom: '1.2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.8rem' }}>
+              <div>
+                <h2 style={{ color: '#facc15', margin: 0 }}>🎮 ACADEMIC ARCADE ENGINE</h2>
+                <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0.2rem 0 0 0' }}>Engine Kuis 3-Fase yang menyedot catatan Notes Ketikan & Materi File secara presisi!</p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <select 
+                  value={arcadeCourse} 
+                  onChange={e => setArcadeCourse(e.target.value)} 
+                  style={{ padding: '0.5rem 0.8rem', backgroundColor: '#1e293b', border: '1px solid #eab308', color: '#fff', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.85rem' }}
+                >
+                  {uniqueCoursesFromSchedules.length > 0 ? (
+                    uniqueCoursesFromSchedules.map((cName, idx) => (
+                      <option key={idx} value={cName}>{cName}</option>
+                    ))
+                  ) : (
+                    <option value="Main Control Room">Main Control Room</option>
+                  )}
+                </select>
+
+                <select 
+                  value={arcadeMeeting} 
+                  onChange={e => setArcadeMeeting(e.target.value)} 
+                  style={{ padding: '0.5rem 0.8rem', backgroundColor: '#1e293b', border: '1px solid #eab308', color: '#fff', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.85rem' }}
+                >
+                  {Array.from({ length: 14 }, (_, i) => i + 1).map(num => (
+                    <option key={num} value={num.toString()}>Pertemuan {num}</option>
+                  ))}
+                  <option value="UTS">🚨 CHECKPOINT UTS (Pertemuan 1–7)</option>
+                  <option value="UAS">🔥 CHECKPOINT UAS (Pertemuan 8–14)</option>
+                </select>
+
+                <button 
+                  onClick={handleStartArcadeQuiz} 
+                  disabled={isGeneratingQuiz} 
+                  style={{ backgroundColor: '#eab308', color: '#000', border: 'none', padding: '0.55rem 1.2rem', borderRadius: '8px', fontWeight: '900', cursor: isGeneratingQuiz ? 'not-allowed' : 'pointer' }}
+                >
+                  {isGeneratingQuiz ? '⏳ Menyusun Kuis AI...' : '🚀 MULAI KUIS'}
+                </button>
+              </div>
+            </div>
+
+            {!quizData && !isGeneratingQuiz && (
+              <div style={{ textAlign: 'center', padding: '3rem 1rem', backgroundColor: '#1e293b', borderRadius: '12px', border: '1px dashed #475569' }}>
+                <span style={{ fontSize: '3rem', display: 'block', marginBottom: '0.5rem' }}>🕹️</span>
+                <h3 style={{ color: '#f8fafc', margin: '0 0 0.5rem 0' }}>Pilih Mata Kuliah & Pertemuan di atas</h3>
+                <p style={{ color: '#94a3b8', fontSize: '0.85rem', maxWidth: '500px', margin: '0 auto' }}>
+                  AI Gemini akan otomatis menyedot gabungan data dari Notes Ketikan dan File Materi untuk meracik kuis 3-Fase.
+                </p>
+              </div>
+            )}
+
+            {isGeneratingQuiz && (
+              <div style={{ textAlign: 'center', padding: '3rem 1rem', backgroundColor: '#1e293b', borderRadius: '12px' }}>
+                <h3 style={{ color: '#ec4899', margin: 0 }}>🤖 AI Gemini sedang membedah materi dual-source...</h3>
+              </div>
+            )}
+
+            {quizData && (
+              <div style={{ backgroundColor: '#1e293b', borderRadius: '14px', padding: '1.2rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.2rem' }}>
+                  {[
+                    { step: 1, label: 'FASE 1: LITERASI' },
+                    { step: 2, label: 'FASE 2: KUIS PG' },
+                    { step: 3, label: 'FASE 3: SPARRING' },
+                    { step: 4, label: '📊 DIAGNOSTIC' }
+                  ].map(s => (
+                    <div key={s.step} style={{ flex: 1, padding: '0.5rem', textAlign: 'center', borderRadius: '8px', backgroundColor: arcadeStep === s.step ? '#ec4899' : (arcadeStep > s.step ? '#22c55e' : '#0f172a'), color: '#fff', fontWeight: 'bold', fontSize: '0.75rem' }}>
+                      {s.label}
+                    </div>
+                  ))}
+                </div>
+
+                {arcadeStep === 1 && (
+                  <div>
+                    <h3 style={{ color: '#38bdf8', marginTop: 0 }}>📘 FASE 1: BRIEFING LITERASI & KONSEP INTI</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', marginBottom: '1.5rem' }}>
+                      {quizData.fase1_literacy.map((item, idx) => (
+                        <div key={idx} style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '10px', borderLeft: '4px solid #38bdf8' }}>
+                          <h4 style={{ color: '#facc15', margin: '0 0 0.4rem 0' }}>📌 {item.title}</h4>
+                          <p style={{ color: '#cbd5e1', fontSize: '0.88rem', margin: 0, lineHeight: '1.5' }}>{item.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={() => setArcadeStep(2)} style={{ backgroundColor: '#ec4899', color: '#fff', border: 'none', padding: '0.7rem 1.5rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>➡️ Lanjut ke Fase 2: Uji Kuis Pilihan Ganda</button>
+                  </div>
+                )}
+
+                {arcadeStep === 2 && (
+                  <div>
+                    <h3 style={{ color: '#4ade80', marginTop: 0 }}>🎯 FASE 2: KUIS VALIDASI PEMAHAMAN (PG)</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', marginBottom: '1.5rem' }}>
+                      {quizData.fase2_quiz.map((q, qIdx) => (
+                        <div key={q.id || qIdx} style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                          <h4 style={{ color: '#fff', margin: '0 0 0.8rem 0' }}>{qIdx + 1}. {q.question}</h4>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.5rem' }}>
+                            {q.options.map((opt, optIdx) => {
+                              const isSelected = userQuizAnswers[q.id] === optIdx;
+                              return (
+                                <button key={optIdx} onClick={() => handleSelectQuizOption(q.id, optIdx)} style={{ backgroundColor: isSelected ? '#ec4899' : '#1e293b', color: isSelected ? '#fff' : '#cbd5e1', border: isSelected ? '1px solid #ec4899' : '1px solid rgba(255,255,255,0.1)', padding: '0.6rem 0.8rem', borderRadius: '8px', textAlign: 'left', cursor: 'pointer', fontSize: '0.82rem', fontWeight: isSelected ? 'bold' : 'normal' }}>
+                                  {String.fromCharCode(65 + optIdx)}. {opt}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.8rem' }}>
+                      <button onClick={() => setArcadeStep(1)} style={{ backgroundColor: '#334155', color: '#fff', border: 'none', padding: '0.6rem 1.2rem', borderRadius: '8px', cursor: 'pointer' }}>⬅️ Kembali</button>
+                      <button onClick={() => setArcadeStep(3)} style={{ backgroundColor: '#4ade80', color: '#000', border: 'none', padding: '0.6rem 1.2rem', borderRadius: '8px', fontWeight: '900', cursor: 'pointer' }}>➡️ Lanjut ke Fase 3</button>
+                    </div>
+                  </div>
+                )}
+
+                {arcadeStep === 3 && (
+                  <div>
+                    <h3 style={{ color: '#a78bfa', marginTop: 0 }}>🥊 FASE 3: SPARRING STUDIO (UJI PENALARAN)</h3>
+                    <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '10px', borderLeft: '4px solid #a78bfa', marginBottom: '1rem' }}>
+                      <h4 style={{ color: '#a78bfa', margin: '0 0 0.4rem 0' }}>🎙️ Studi Kasus:</h4>
+                      <p style={{ color: '#fff', fontSize: '0.92rem', margin: 0, fontWeight: 'bold' }}>{quizData.fase3_sparring_question}</p>
+                    </div>
+                    <textarea placeholder="Ketik analisis penalaran argumenmu di sini..." value={userSparringAnswer} onChange={e => setUserSparringAnswer(e.target.value)} rows={6} style={{ width: '100%', padding: '0.8rem', backgroundColor: '#0f172a', border: '1px solid #a78bfa', color: '#fff', borderRadius: '8px', boxSizing: 'border-box', marginBottom: '1rem', resize: 'vertical' }} />
+                    <div style={{ display: 'flex', gap: '0.8rem' }}>
+                      <button onClick={() => setArcadeStep(2)} style={{ backgroundColor: '#334155', color: '#fff', border: 'none', padding: '0.6rem 1.2rem', borderRadius: '8px', cursor: 'pointer' }}>⬅️ Kembali</button>
+                      <button onClick={handleSubmitSparring} disabled={isEvaluatingSparring} style={{ backgroundColor: '#a78bfa', color: '#000', border: 'none', padding: '0.6rem 1.5rem', borderRadius: '8px', fontWeight: '900', cursor: 'pointer' }}>
+                        {isEvaluatingSparring ? '⏳ Menilai...' : '🚀 KIRIM EVALUASI AI'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {arcadeStep === 4 && (
+                  <div>
+                    <h3 style={{ color: '#facc15', marginTop: 0, textAlign: 'center' }}>📊 ACADEMIC DIAGNOSTIC REPORT</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                      <div style={{ backgroundColor: '#0f172a', padding: '1.2rem', borderRadius: '12px', border: '1px solid #4ade80', textAlign: 'center' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 'bold' }}>🎯 AKURASI LITERASI</span>
+                        <h2 style={{ fontSize: '2.5rem', color: '#4ade80', margin: '0.3rem 0' }}>{calculateQuizScore()}%</h2>
+                      </div>
+                      <div style={{ backgroundColor: '#0f172a', padding: '1.2rem', borderRadius: '12px', border: '1px solid #a78bfa', textAlign: 'center' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 'bold' }}>🥊 SKOR SPARRING</span>
+                        <h2 style={{ fontSize: '2.5rem', color: '#a78bfa', margin: '0.3rem 0' }}>{sparringEvaluation ? sparringEvaluation.score : 0}/100</h2>
+                      </div>
+                    </div>
+
+                    {sparringEvaluation && (
+                      <div style={{ backgroundColor: '#0f172a', padding: '1.2rem', borderRadius: '12px', border: '1px solid #facc15', marginBottom: '1.5rem' }}>
+                        <h4 style={{ color: '#facc15', marginTop: 0 }}>🎙️ Evaluasi Kritis Dosen AI:</h4>
+                        <p style={{ color: '#cbd5e1', fontSize: '0.88rem' }}>{sparringEvaluation.analysis_summary}</p>
+                      </div>
+                    )}
+                    <div style={{ textAlign: 'center' }}>
+                      <button onClick={() => setQuizData(null)} style={{ backgroundColor: '#eab308', color: '#000', border: 'none', padding: '0.7rem 1.8rem', borderRadius: '8px', fontWeight: '900', cursor: 'pointer' }}>🔄 Mainkan Kuis Sesi Lain</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* --- TAB 5: TASKS --- */}
+        {activeTab === 'tasks' && (
+          <div style={{ backgroundColor: '#0f172a', padding: '1.2rem', borderRadius: '16px' }}>
+            <h3 style={{ color: '#ec4899', marginTop: 0 }}>🎯 TASK & DEADLINE MONITOR</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+              {tasks.length === 0 ? <p style={{ color: '#64748b' }}>Belum ada tugas.</p> : tasks.map(t => (
+                <div key={t.id} onClick={() => setSelectedCalendarItem({ type: 'TASK', data: t })} style={{ backgroundColor: '#1e293b', padding: '1rem', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
+                  <div>
+                    <h4 style={{ margin: 0, color: '#f8fafc' }}>{t.title}</h4>
+                    <span style={{ fontSize: '0.75rem', color: '#38bdf8' }}>🏷️ {t.tag} • ⏰ {t.deadline}</span>
+                  </div>
+                  <button onClick={(e) => handleDeleteTask(t.id, e)} style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid #ef4444', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer' }}>🗑️</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* --- TAB 6: PRODUSER CONTROL PANEL (INSIGHT LAMA DIHAPUS) --- */}
+        {activeTab === 'producer' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '0.5rem' }}>
+            {!isAdmin ? (
+              <div style={{ backgroundColor: '#0f172a', padding: '2rem', borderRadius: '16px', border: '1px solid #ec4899', textAlign: 'center' }}>
+                <h3 style={{ color: '#ec4899', margin: '0 0 0.5rem 0' }}>🔒 PRODUSER MODE TERKUNCI</h3>
+                <button onClick={() => setShowPinModal(true)} style={{ backgroundColor: '#ec4899', color: '#fff', border: 'none', padding: '0.6rem 1.2rem', borderRadius: '8px', cursor: 'pointer' }}>🔑 Masukkan PIN Produser</button>
+              </div>
+            ) : (
+              <>
+                <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', border: '1px solid #eab308', borderRadius: '16px', padding: '1.2rem' }}>
+                  <h3 style={{ color: '#facc15', marginTop: 0 }}>🎛️ SAKELAR LIBUR & MODE PEKAN</h3>
+                  <div style={{ display: 'flex', gap: '0.8rem', marginBottom: '1.2rem', flexWrap: 'wrap' }}>
+                    {['REGULAR', 'UTS', 'UAS'].map(mode => (
+                      <button key={mode} onClick={() => handleSetWeekType(mode)} style={{ backgroundColor: globalWeekType === mode ? '#ec4899' : '#1e293b', color: '#fff', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>{mode}</button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.6rem' }}>
+                    {schedules.map(s => (
+                      <div key={s.id} style={{ backgroundColor: '#1e293b', padding: '0.7rem 1rem', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: s.is_cancelled ? '#94a3b8' : '#fff', textDecoration: s.is_cancelled ? 'line-through' : 'none' }}>{s.course_name}</span>
+                        <button onClick={() => handleToggleCancelCourse(s.id)} style={{ backgroundColor: s.is_cancelled ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)', color: s.is_cancelled ? '#ef4444' : '#4ade80', border: 'none', padding: '0.3rem 0.7rem', borderRadius: '6px', cursor: 'pointer' }}>
+                          {s.is_cancelled ? '⛔ DILIBURKAN' : '✅ AKTIF'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', border: '1px solid #ec4899', borderRadius: '16px', padding: '1.2rem' }}>
+                  <h3 style={{ color: '#ec4899', marginTop: 0 }}>📌 INPUT TUGAS & BREAKDOWN AI</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.8rem' }}>
+                    <input type="text" placeholder="Judul Tugas" value={title} onChange={e=>setTitle(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }} />
+                    <select value={tag} onChange={e=>setTag(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }}>
+                      <option value="Manajemen Penyiaran">Manajemen Penyiaran</option>
+                      <option value="Komunikasi Politik">Komunikasi Politik</option>
+                      <option value="Main Control Room">Main Control Room</option>
+                    </select>
+                    <input type="date" value={deadline} onChange={e=>setDeadline(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }} />
+                  </div>
+                  <button onClick={handleGenerateAiSubtasks} style={{ backgroundColor: '#ec4899', color: '#fff', border: 'none', padding: '0.7rem 1.2rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginTop: '0.8rem' }}>⚡ Minta AI Buat Breakdown</button>
+                </div>
+
+                <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', border: '1px solid #38bdf8', borderRadius: '16px', padding: '1.2rem' }}>
+                  <h3 style={{ color: '#38bdf8', marginTop: 0 }}>📅 INPUT JADWAL KULIAH UTAMA</h3>
+                  <form onSubmit={handleAddSchedule} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.8rem' }}>
+                    <input type="text" placeholder="Nama Mata Kuliah" value={courseName} onChange={e=>setCourseName(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }} />
+                    <input type="text" placeholder="Nama Dosen" value={lecturerName} onChange={e=>setLecturerName(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }} />
+                    <input type="text" placeholder="Ruangan" value={room} onChange={e=>setRoom(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }} />
+                    <select value={dayOfWeek} onChange={e=>setDayOfWeek(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }}>
+                      <option value="Senin">Senin</option><option value="Selasa">Selasa</option><option value="Rabu">Rabu</option><option value="Kamis">Kamis</option><option value="Jumat">Jumat</option><option value="Sabtu">Sabtu</option>
+                    </select>
+                    <button type="submit" style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '0.7rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>💾 Simpan Jadwal</button>
+                  </form>
+                </div>
+
+                <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: '16px', padding: '1.2rem' }}>
+                  <h4 style={{ color: '#ef4444', marginTop: 0 }}>⚠️ SYSTEM RESET CONTROL</h4>
+                  <button onClick={handleClearAllData} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '0.7rem 1.2rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>🗑️ Hapus Seluruh Data</button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
 
-      {/* FOOTER WATERMARK COPYRIGHT */}
       <footer style={{ marginTop: '2.5rem', paddingTop: '1rem', borderTop: '1px solid rgba(255, 255, 255, 0.05)', textAlign: 'center' }}>
-        <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748b', fontWeight: '600', letterSpacing: '0.5px' }}>
-          Designed &amp; Developed by <span style={{ color: '#ec4899', fontWeight: 'bold' }}>mhrsnndi</span>
-        </p>
-        <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.65rem', color: '#475569' }}>
-          © 2026 — All rights reserved
-        </p>
+        <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748b', fontWeight: '600' }}>Designed & Developed by <span style={{ color: '#ec4899', fontWeight: 'bold' }}>mhrsnndi</span></p>
       </footer>
 
-      {/* MODAL KONTROL ABSENSI */}
+      {/* MODAL ABSENSI & LAINNYA */}
       {showAttendanceModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '1rem' }}>
-          <div style={{ backgroundColor: '#0f172a', padding: '1.5rem', borderRadius: '16px', border: '1px solid #38bdf8', width: '100%', maxWidth: '400px', boxSizing: 'border-box' }}>
-            <h3 style={{ color: '#38bdf8', marginTop: 0, marginBottom: '0.2rem' }}>🎛️ CONTROL ROOM: Panel Absensi</h3>
-            <p style={{ color: '#ec4899', fontSize: '0.85rem', fontWeight: 'bold', margin: '0 0 1rem 0' }}>
-              📅 Sesi Hari Ini: {todayDayName.toUpperCase()}, {now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
-            </p>
-
-            {(() => {
-              const todaysClasses = schedules.filter(s => (s.day_of_week || '').trim().toLowerCase() === todayDayName.toLowerCase());
-
-              if (todaysClasses.length === 0) {
-                return (
-                  <div style={{ backgroundColor: '#1e293b', padding: '1.5rem', borderRadius: '12px', textAlign: 'center', margin: '1rem 0', border: '1px dashed #64748b' }}>
-                    <span style={{ fontSize: '2rem', display: 'block', marginBottom: '0.5rem' }}>☕</span>
-                    <h4 style={{ margin: 0, color: '#f8fafc', fontSize: '1rem' }}>Tidak ada Jadwal Kuliah hari ini</h4>
-                    <p style={{ margin: '0.4rem 0 0 0', color: '#94a3b8', fontSize: '0.75rem' }}>Selamat beristirahat atau fokus menyelesaikan tugas!</p>
-                  </div>
-                );
-              }
-
+          <div style={{ backgroundColor: '#0f172a', padding: '1.5rem', borderRadius: '16px', border: '1px solid #38bdf8', width: '100%', maxWidth: '400px' }}>
+            <h3 style={{ color: '#38bdf8', marginTop: 0 }}>🎛️ Panel Absensi Hari Ini</h3>
+            {activeTodaySchedules.map((s) => {
+              const isChecked = (s.attendance_status || '').toUpperCase() === 'SUDAH ABSEN';
               return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', maxHeight: '300px', overflowY: 'auto', marginBottom: '1rem' }}>
-                  {todaysClasses.map((s) => {
-                    const st = (s.attendance_status || '').toUpperCase();
-                    const isChecked = st === 'SUDAH ABSEN' || st === 'SUDAH' || s.is_attended === true || s.is_attended === 1;
-
-                    return (
-                      <div key={s.id} style={{ backgroundColor: '#1e293b', padding: '0.8rem', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: isChecked ? '1px solid #4ade80' : '1px solid #334155' }}>
-                        <div>
-                          <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#f8fafc' }}>{s.course_name}</div>
-                          <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-                            {s.day_of_week}, {s.start_time} – {s.end_time} | Status: <span style={{ color: isChecked ? '#4ade80' : '#fb923c', fontWeight: 'bold' }}>{isChecked ? 'SUDAH ABSEN' : 'BELUM'}</span>
-                          </div>
-                        </div>
-
-                        <button 
-                          onClick={() => handleToggleAttendance(s.id)}
-                          style={{ 
-                            backgroundColor: isChecked ? '#334155' : '#22c55e', 
-                            color: isChecked ? '#cbd5e1' : '#fff', 
-                            border: 'none', padding: '0.4rem 0.8rem', borderRadius: '6px', 
-                            fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer'
-                          }}
-                        >
-                          {isChecked ? '↩️ Batalkan' : '✅ Absen'}
-                        </button>
-                      </div>
-                    );
-                  })}
+                <div key={s.id} style={{ backgroundColor: '#1e293b', padding: '0.8rem', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <span style={{ color: '#fff', fontSize: '0.85rem' }}>{s.course_name}</span>
+                  <button onClick={() => handleToggleAttendance(s.id)} style={{ backgroundColor: isChecked ? '#334155' : '#22c55e', color: '#fff', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer' }}>
+                    {isChecked ? '↩️ Batalkan' : '✅ Absen'}
+                  </button>
                 </div>
               );
-            })()}
-
-            <button onClick={() => setShowAttendanceModal(false)} style={{ backgroundColor: '#334155', color: '#fff', border: 'none', padding: '0.6rem', borderRadius: '8px', width: '100%', cursor: 'pointer', fontWeight: 'bold' }}>Tutup Panel</button>
+            })}
+            <button onClick={() => setShowAttendanceModal(false)} style={{ backgroundColor: '#334155', color: '#fff', border: 'none', padding: '0.6rem', borderRadius: '8px', width: '100%', cursor: 'pointer', marginTop: '1rem' }}>Tutup</button>
           </div>
         </div>
       )}
 
-      {/* MODAL AI SUBTASKS */}
-      {showAiModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100, padding: '1rem' }}>
-          <div style={{ backgroundColor: '#0f172a', padding: '1.5rem', borderRadius: '16px', border: '1px solid #ec4899', width: '100%', maxWidth: '460px', boxSizing: 'border-box' }}>
-            <h3 style={{ color: '#ec4899', marginTop: 0 }}>🤖 Draf Sub-Task AI</h3>
-            
-            {aiDraftSubtasks.map((st, idx) => (
-              <div key={idx} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginBottom: '0.8rem' }}>
-                <div style={{ flex: 1 }}>
-                  <input type="text" value={st.title} onChange={e => { const updated = [...aiDraftSubtasks]; updated[idx].title = e.target.value; setAiDraftSubtasks(updated); }} style={{ width: '100%', padding: '0.4rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '6px', marginBottom: '0.2rem', boxSizing: 'border-box' }} />
-                  <input type="date" value={st.deadline} onChange={e => { const updated = [...aiDraftSubtasks]; updated[idx].deadline = e.target.value; setAiDraftSubtasks(updated); }} style={{ padding: '0.4rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '6px' }} />
-                </div>
-                <button onClick={() => handleRemoveSubtask(idx)} style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid #ef4444', padding: '0.4rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>❌</button>
-              </div>
-            ))}
-
-            <button onClick={handleAddCustomSubtask} style={{ backgroundColor: '#334155', color: '#38bdf8', border: '1px dashed #38bdf8', width: '100%', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', marginBottom: '1rem' }}>
-              ➕ Tambah Sub-task Manual
-            </button>
-
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button onClick={handleSaveTaskPermanent} style={{ flex: 1, backgroundColor: '#ec4899', color: '#fff', border: 'none', padding: '0.6rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>💾 Simpan Permanen ke SQLite</button>
-              <button onClick={() => setShowAiModal(false)} style={{ backgroundColor: '#334155', color: '#fff', border: 'none', padding: '0.6rem', borderRadius: '8px', cursor: 'pointer' }}>Batal</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL POP-UP DETAIL ITEM KALENDER DENGAN TOMBOL HAPUS AMAN (PRODUSER ONLY) */}
-      {selectedCalendarItem && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100, padding: '1rem' }}>
-          <div style={{ backgroundColor: '#0f172a', padding: '1.5rem', borderRadius: '16px', border: selectedCalendarItem.type === 'TASK' ? '1px solid #ec4899' : '1px solid #0284c7', width: '100%', maxWidth: '380px', boxSizing: 'border-box' }}>
-            
-            {selectedCalendarItem.type === 'TASK' ? (
-              <>
-                <h3 style={{ color: '#ec4899', marginTop: 0 }}>📌 DETAIL TUGAS</h3>
-                <h4 style={{ color: '#fff', margin: '0.4rem 0' }}>{selectedCalendarItem.data.title}</h4>
-                <p style={{ color: '#38bdf8', fontSize: '0.85rem', margin: '0.2rem 0' }}>🏷️ Matkul: {selectedCalendarItem.data.tag}</p>
-                <p style={{ color: '#fb923c', fontSize: '0.85rem', margin: '0.2rem 0' }}>⏰ Deadline: {selectedCalendarItem.data.deadline}</p>
-                <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0.5rem 0 1rem 0' }}>📝 Catatan: {selectedCalendarItem.data.description || 'Tidak ada catatan.'}</p>
-                
-                {selectedCalendarItem.data.status !== 'Selesai' && (
-                  <button onClick={() => handleCompleteTaskFromModal(selectedCalendarItem.data.id)} style={{ backgroundColor: '#22c55e', color: '#fff', border: 'none', padding: '0.6rem', borderRadius: '8px', width: '100%', fontWeight: 'bold', cursor: 'pointer', marginBottom: '0.5rem' }}>
-                    ✅ Tandai Tugas Selesai
-                  </button>
-                )}
-                {isAdmin && (
-                  <button onClick={() => handleDeleteTask(selectedCalendarItem.data.id)} style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid #ef4444', padding: '0.6rem', borderRadius: '8px', width: '100%', fontWeight: 'bold', cursor: 'pointer', marginBottom: '0.5rem' }}>
-                    🗑️ Hapus Tugas Ini
-                  </button>
-                )}
-              </>
-            ) : selectedCalendarItem.type === 'SUBTASK' ? (
-              <>
-                <h3 style={{ color: '#9333ea', marginTop: 0 }}>🔹 DETAIL SUB-TASK</h3>
-                <h4 style={{ color: '#fff', margin: '0.4rem 0' }}>{selectedCalendarItem.data.title}</h4>
-                <p style={{ color: '#ec4899', fontSize: '0.85rem', margin: '0.2rem 0' }}>📌 Tugas Utama: {selectedCalendarItem.data.parentTaskTitle}</p>
-                <p style={{ color: '#fb923c', fontSize: '0.85rem', margin: '0.2rem 0 1rem 0' }}>⏰ Deadline Sub-task: {selectedCalendarItem.data.deadline}</p>
-
-                <button onClick={() => handleToggleSubtaskFromModal(selectedCalendarItem.data.id, selectedCalendarItem.data.completed)} style={{ backgroundColor: selectedCalendarItem.data.completed ? '#334155' : '#22c55e', color: '#fff', border: 'none', padding: '0.6rem', borderRadius: '8px', width: '100%', fontWeight: 'bold', cursor: 'pointer', marginBottom: '0.5rem' }}>
-                  {selectedCalendarItem.data.completed ? '↩️ Batalkan Tanda Selesai' : '✅ Tandai Sub-task Selesai'}
-                </button>
-              </>
-            ) : (
-              <>
-                <h3 style={{ color: '#0284c7', marginTop: 0 }}>🎓 DETAIL JADWAL KULIAH</h3>
-                <h4 style={{ color: '#fff', margin: '0.4rem 0' }}>{selectedCalendarItem.data.course_name}</h4>
-                <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0.2rem 0' }}>👨‍🏫 Dosen: {selectedCalendarItem.data.lecturer_name}</p>
-                <p style={{ color: '#38bdf8', fontSize: '0.85rem', margin: '0.2rem 0' }}>🏛️ Ruangan: {selectedCalendarItem.data.room}</p>
-                <p style={{ color: '#4ade80', fontSize: '0.85rem', margin: '0.2rem 0 1rem 0' }}>⏰ Waktu: {selectedCalendarItem.data.day_of_week}, {selectedCalendarItem.data.start_time} – {selectedCalendarItem.data.end_time}</p>
-                
-                {isAdmin && (
-                  <button onClick={() => handleDeleteSchedule(selectedCalendarItem.data.id)} style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid #ef4444', padding: '0.6rem', borderRadius: '8px', width: '100%', fontWeight: 'bold', cursor: 'pointer', marginBottom: '0.5rem' }}>
-                    🗑️ Hapus Jadwal Ini
-                  </button>
-                )}
-              </>
-            )}
-
-            <button onClick={() => setSelectedCalendarItem(null)} style={{ backgroundColor: '#334155', color: '#fff', border: 'none', padding: '0.5rem', borderRadius: '8px', width: '100%', cursor: 'pointer', marginTop: '0.5rem' }}>Tutup</button>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL PIN LOGIN */}
       {showPinModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
-          <form onSubmit={handleLogin} style={{ backgroundColor: '#0f172a', padding: '1.8rem', borderRadius: '16px', border: '1px solid #ec4899', textTransform: 'none', width: '280px' }}>
+          <form onSubmit={handleLogin} style={{ backgroundColor: '#0f172a', padding: '1.8rem', borderRadius: '16px', border: '1px solid #ec4899', width: '280px' }}>
             <h3 style={{ margin: '0 0 1rem 0', color: '#ec4899', textAlign: 'center' }}>🔑 PIN Produser</h3>
-            <input type="password" placeholder="PIN" value={pinInput} onChange={(e) => setPinInput(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#1e293b', color: '#fff', textAlign: 'center', marginBottom: '1rem', fontSize: '1.1rem', boxSizing: 'border-box' }} />
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button type="submit" style={{ flex: 1, backgroundColor: '#ec4899', color: '#fff', border: 'none', padding: '0.6rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Buka</button>
-              <button type="button" onClick={() => setShowPinModal(false)} style={{ flex: 1, backgroundColor: '#334155', color: '#fff', border: 'none', padding: '0.6rem', borderRadius: '8px', cursor: 'pointer' }}>Batal</button>
-            </div>
+            <input type="password" placeholder="PIN" value={pinInput} onChange={(e) => setPinInput(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#1e293b', color: '#fff', textAlign: 'center', marginBottom: '1rem', boxSizing: 'border-box' }} />
+            <button type="submit" style={{ width: '100%', backgroundColor: '#ec4899', color: '#fff', border: 'none', padding: '0.6rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Buka</button>
           </form>
         </div>
       )}
