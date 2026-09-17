@@ -23,7 +23,7 @@ export default function App() {
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
 
-  // Form State Task (RESTORED DESCRIPTION)
+  // Form State Task
   const [title, setTitle] = useState('');
   const [tag, setTag] = useState('Manajemen Penyiaran');
   const [customTag, setCustomTag] = useState('');
@@ -495,7 +495,7 @@ export default function App() {
   };
 
   const handleGenerateAiSubtasks = async () => {
-    if (!title) { alert("Isi judul tugas dulu!"); return; }
+    if (!title.trim()) { alert("⚠️ Isi judul tugas terlebih dahulu!"); return; }
     setIsGeneratingAi(true);
     try {
       const finalTag = tag === 'CUSTOM' ? customTag : tag;
@@ -510,13 +510,13 @@ export default function App() {
         setAiDraftSubtasks(data.subtasks);
         setShowAiModal(true);
       } else if (res.status === 401) {
-        alert("🔒 Sesi Produser sudah habis, login ulang ya.");
+        alert("🔒 Sesi Produser sudah habis, silakan login ulang.");
         setIsAdmin(false);
       } else {
-        alert(`⚠️ AI gagal bikin breakdown: ${data.error || 'Error tidak diketahui'}`);
+        alert(`⚠️ AI gagal menyusun breakdown: ${data.error || 'Error tidak diketahui'}`);
       }
     } catch (err) {
-      alert("Gagal menghubungi server AI.");
+      alert("Gagal menghubungi server AI breakdown.");
     } finally {
       setIsGeneratingAi(false);
     }
@@ -543,7 +543,7 @@ export default function App() {
         setTitle(''); setCustomTag(''); setDescription(''); setDeadline(''); setShowAiModal(false);
         fetchData();
       } else if (res.status === 401) {
-        alert("🔒 Sesi Produser sudah habis, login ulang ya.");
+        alert("🔒 Sesi Produser sudah habis, silakan login ulang.");
         setIsAdmin(false);
       }
     } catch (err) { alert("Gagal menyimpan tugas."); }
@@ -753,7 +753,7 @@ export default function App() {
                   <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>PROGRESS TUGAS</span>
                 </div>
 
-                {/* ✅ RESTORED FITUR 1: CARD 3 ABSENSI DENGAN INDIKATOR LAMPU WARNA DINAMIS */}
+                {/* CARD 3 ABSENSI DENGAN INDIKATOR LAMPU WARNA DINAMIS */}
                 {(() => {
                   const hasActiveTodayClass = activeTodaySchedules.length > 0;
                   const isTodayUncompleted = hasActiveTodayClass && activeTodaySchedules.some(s => {
@@ -774,7 +774,6 @@ export default function App() {
                     >
                       <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>STATUS ABSENSI HARI INI</span>
                       
-                      {/* DERETAN LAMPU INDIKATOR MATKUL HARI INI */}
                       <div style={{ display: 'flex', gap: '6px', margin: '0.5rem 0', justifyContent: 'center', alignItems: 'center' }}>
                         {hasActiveTodayClass ? (
                           activeTodaySchedules.map((s, idx) => {
@@ -835,7 +834,6 @@ export default function App() {
                 ))}
               </div>
 
-              {/* ✅ RESTORED FITUR 2: EVENT ONCLICK POPUP DETAIL ITEM DI KALENDER */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', minWidth: '320px' }}>
                 {Array.from({ length: firstDayIndex }).map((_, i) => (
                   <div key={`empty-${i}`} style={{ minHeight: '65px', borderRadius: '8px', backgroundColor: 'rgba(15, 23, 42, 0.2)' }} />
@@ -870,21 +868,18 @@ export default function App() {
                         <span style={{ fontSize: '0.75rem', color: isTodayBox ? '#ec4899' : '#94a3b8', fontWeight: isTodayBox ? '900' : 'bold' }}>{dayNum}</span>
                       </div>
                       
-                      {/* KLIK POPUP DETAIL JADWAL KULIAH */}
                       {matchedSchedules.map((s, idx) => (
                         <div key={`sc-${idx}`} onClick={() => setSelectedCalendarItem({ type: 'SCHEDULE', data: s })} style={{ backgroundColor: s.is_cancelled ? '#475569' : '#0284c7', color: '#fff', fontSize: '0.55rem', padding: '2px 4px', borderRadius: '3px', marginTop: '2px', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', textDecoration: s.is_cancelled ? 'line-through' : 'none', opacity: s.is_cancelled ? 0.6 : 1 }}>
                           🎓 {s.is_cancelled ? '⛔ ' : ''}{s.course_name}
                         </div>
                       ))}
 
-                      {/* KLIK POPUP DETAIL TUGAS UTAMA */}
                       {matchedTasks.map((t, idx) => (
                         <div key={`mt-${idx}`} onClick={() => setSelectedCalendarItem({ type: 'TASK', data: t })} style={{ backgroundColor: '#ec4899', color: '#fff', fontSize: '0.55rem', padding: '2px 4px', borderRadius: '3px', marginTop: '2px', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}>
                           📌 {t.title}
                         </div>
                       ))}
 
-                      {/* KLIK POPUP DETAIL SUB-TASK */}
                       {matchedSubtasks.map((st, idx) => (
                         <div key={`st-${idx}`} onClick={() => setSelectedCalendarItem({ type: 'SUBTASK', data: st })} style={{ backgroundColor: '#9333ea', color: '#fff', fontSize: '0.52rem', padding: '2px 4px', borderRadius: '3px', marginTop: '2px', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}>
                           🔹 {st.title}
@@ -1142,7 +1137,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* ✅ RESTORED FITUR 3: INPUT TUGAS BESERTA DESKRIPSI DETAIL TUGAS */}
                 <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', border: '1px solid #ec4899', borderRadius: '16px', padding: '1.2rem' }}>
                   <h3 style={{ color: '#ec4899', marginTop: 0 }}>📌 INPUT TUGAS & BREAKDOWN AI</h3>
                   
@@ -1167,7 +1161,6 @@ export default function App() {
                     <input type="date" value={deadline} onChange={e=>setDeadline(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px' }} />
                   </div>
                   
-                  {/* RESTORED INPUT DESKRIPSI DETAIL TUGAS */}
                   <textarea 
                     placeholder="Deskripsi Tugas / Catatan Khusus dari Dosen (Detail Instruksi Tugas)..." 
                     value={description} 
@@ -1176,8 +1169,12 @@ export default function App() {
                     style={{ width: '100%', padding: '0.7rem', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px', marginTop: '0.8rem', boxSizing: 'border-box', resize: 'vertical' }} 
                   />
 
-                  <button onClick={handleGenerateAiSubtasks} style={{ backgroundColor: '#ec4899', color: '#fff', border: 'none', padding: '0.7rem 1.2rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginTop: '0.8rem' }}>
-                    ⚡ Minta AI Buat Breakdown (Tahap 1)
+                  <button 
+                    onClick={handleGenerateAiSubtasks} 
+                    disabled={isGeneratingAi} 
+                    style={{ backgroundColor: '#ec4899', color: '#fff', border: 'none', padding: '0.7rem 1.2rem', borderRadius: '8px', fontWeight: 'bold', cursor: isGeneratingAi ? 'wait' : 'pointer', marginTop: '0.8rem', opacity: isGeneratingAi ? 0.7 : 1 }}
+                  >
+                    {isGeneratingAi ? '⏳ Gemini Sedang Memecah Tugas...' : '⚡ Minta AI Buat Breakdown (Tahap 1)'}
                   </button>
                 </div>
 
@@ -1229,7 +1226,54 @@ export default function App() {
         </div>
       )}
 
-      {/* RESTORED MODAL POP-UP DETAIL ITEM KALENDER */}
+      {/* ✅ RESTORED MODAL 1: REVIEW & SAVE DRAFT AI SUBTASKS (TAHAP 2) */}
+      {showAiModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 130, padding: '1rem' }}>
+          <div style={{ backgroundColor: '#0f172a', padding: '1.5rem', borderRadius: '16px', border: '1px solid #ec4899', width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ color: '#ec4899', marginTop: 0 }}>🤖 BREAKDOWN TUGAS DARI GEMINI AI</h3>
+            <p style={{ color: '#94a3b8', fontSize: '0.82rem', marginBottom: '1rem' }}>Review sub-tugas di bawah ini. Kamu bisa mengubah judul, me-adjust tanggal deadline, atau menambah/menghapus sub-tugas sebelum disimpan.</p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '1.2rem' }}>
+              {aiDraftSubtasks.map((st, idx) => (
+                <div key={idx} style={{ backgroundColor: '#1e293b', padding: '0.7rem', borderRadius: '8px', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    value={st.title}
+                    onChange={(e) => {
+                      const updated = [...aiDraftSubtasks];
+                      updated[idx].title = e.target.value;
+                      setAiDraftSubtasks(updated);
+                    }}
+                    style={{ flex: 1, padding: '0.4rem', backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', borderRadius: '6px', fontSize: '0.85rem' }}
+                  />
+                  <input
+                    type="date"
+                    value={st.deadline}
+                    onChange={(e) => {
+                      const updated = [...aiDraftSubtasks];
+                      updated[idx].deadline = e.target.value;
+                      setAiDraftSubtasks(updated);
+                    }}
+                    style={{ padding: '0.4rem', backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', borderRadius: '6px', fontSize: '0.8rem' }}
+                  />
+                  <button onClick={() => handleRemoveSubtask(idx)} style={{ backgroundColor: 'transparent', color: '#ef4444', border: 'none', cursor: 'pointer', fontSize: '1rem' }} title="Hapus sub-task">✕</button>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={handleAddCustomSubtask} style={{ backgroundColor: '#1e293b', color: '#38bdf8', border: '1px dashed #38bdf8', padding: '0.5rem', borderRadius: '8px', width: '100%', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', marginBottom: '1rem' }}>
+              ➕ Tambah Sub-task Manual
+            </button>
+
+            <div style={{ display: 'flex', gap: '0.8rem' }}>
+              <button onClick={() => setShowAiModal(false)} style={{ flex: 1, backgroundColor: '#334155', color: '#fff', border: 'none', padding: '0.6rem', borderRadius: '8px', cursor: 'pointer' }}>Batal</button>
+              <button onClick={handleSaveTaskPermanent} style={{ flex: 1, backgroundColor: '#22c55e', color: '#fff', border: 'none', padding: '0.6rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>💾 Simpan Permanen</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL POP-UP DETAIL ITEM KALENDER */}
       {selectedCalendarItem && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100, padding: '1rem' }}>
           <div style={{ backgroundColor: '#0f172a', padding: '1.5rem', borderRadius: '16px', border: selectedCalendarItem.type === 'TASK' ? '1px solid #ec4899' : '1px solid #0284c7', width: '100%', maxWidth: '380px', boxSizing: 'border-box' }}>
@@ -1285,6 +1329,7 @@ export default function App() {
         </div>
       )}
 
+      {/* MODAL PIN PRODUSER */}
       {showPinModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
           <form onSubmit={handleLogin} style={{ backgroundColor: '#0f172a', padding: '1.8rem', borderRadius: '16px', border: '1px solid #ec4899', width: '280px' }}>
