@@ -53,7 +53,10 @@ export default function App() {
   const [fileExtractionResult, setFileExtractionResult] = useState('');
 
   const [isInitialCourseLoaded, setIsInitialCourseLoaded] = useState(false);
+  
+  // STATE SEGMENTED FILTER LIBRARY
   const [libraryCourseFilter, setLibraryCourseFilter] = useState('SEMUA');
+  const [libraryMeetingFilter, setLibraryMeetingFilter] = useState('SEMUA');
 
   // Pop-up Detail Item (Klik Kalender)
   const [selectedCalendarItem, setSelectedCalendarItem] = useState(null);
@@ -343,7 +346,7 @@ export default function App() {
         fetchData();
       } else {
         const errorData = await resNotes.json();
-        alert(`⚠️ Gagal menyimpan: ${errorData.error || 'Server error'}`);
+        alert(`⚠️ Gagal menyimpan catatan: ${errorData.error || 'Server error'}`);
       }
     } catch (err) {
       alert("Gagal terhubung ke server backend.");
@@ -963,35 +966,100 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 3: LIBRARY --- */}
+        {/* --- TAB 3: SEGMENTED KNOWLEDGE LIBRARY --- */}
         {activeTab === 'library' && (
-          <div style={{ backgroundColor: '#0f172a', padding: '1.2rem', borderRadius: '16px', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', flexWrap: 'wrap', gap: '0.8rem' }}>
-              <h3 style={{ color: '#a78bfa', margin: 0 }}>📚 DUAL-SOURCE KNOWLEDGE LIBRARY</h3>
-              <select value={libraryCourseFilter} onChange={e => setLibraryCourseFilter(e.target.value)} style={{ padding: '0.4rem 0.8rem', backgroundColor: '#1e293b', border: '1px solid #a78bfa', color: '#fff', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                <option value="SEMUA">🌐 Semua Mata Kuliah</option>
-                {uniqueCoursesFromSchedules.map((cName, idx) => (
-                  <option key={idx} value={cName}>{cName}</option>
-                ))}
-              </select>
+          <div style={{ backgroundColor: '#0f172a', padding: '1.5rem', borderRadius: '16px', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
+            
+            {/* HEADER & SEGMENTED FILTER CONTROL */}
+            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1.2rem', marginBottom: '1.5rem' }}>
+              <h3 style={{ color: '#a78bfa', margin: '0 0 0.4rem 0', fontSize: '1.3rem', fontWeight: '800' }}>📚 SEGMENTED KNOWLEDGE LIBRARY</h3>
+              <p style={{ color: '#94a3b8', fontSize: '0.82rem', margin: 0 }}>Pilih segmen Mata Kuliah dan Sesi Pertemuan untuk menampilkan arsip catatan & file materi secara spesifik.</p>
+              
+              <div style={{ display: 'flex', gap: '0.8rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+                
+                {/* FILTER 1: MATKUL */}
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                  <label style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 'bold', display: 'block', marginBottom: '0.3rem' }}>1. Tentukan Mata Kuliah:</label>
+                  <select 
+                    value={libraryCourseFilter} 
+                    onChange={e => setLibraryCourseFilter(e.target.value)} 
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: '#1e293b', border: '1px solid #38bdf8', color: '#fff', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}
+                  >
+                    <option value="SEMUA">🌐 Semua Mata Kuliah</option>
+                    {uniqueCoursesFromSchedules.map((cName, idx) => (
+                      <option key={idx} value={cName}>{cName}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* FILTER 2: PERTEMUAN */}
+                <div style={{ width: '180px' }}>
+                  <label style={{ fontSize: '0.75rem', color: '#a78bfa', fontWeight: 'bold', display: 'block', marginBottom: '0.3rem' }}>2. Sesi Pertemuan:</label>
+                  <select 
+                    value={libraryMeetingFilter} 
+                    onChange={e => setLibraryMeetingFilter(e.target.value)} 
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: '#1e293b', border: '1px solid #a78bfa', color: '#fff', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}
+                  >
+                    <option value="SEMUA">📂 Semua Pertemuan</option>
+                    {Array.from({ length: 14 }, (_, i) => i + 1).map(num => (
+                      <option key={num} value={num.toString()}>Pertemuan {num}</option>
+                    ))}
+                  </select>
+                </div>
+
+              </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {knowledgeBase.length === 0 ? <p style={{ color: '#64748b' }}>Belum ada materi tersimpan.</p> : knowledgeBase.filter(kb => libraryCourseFilter === 'SEMUA' || (kb.source || '').toLowerCase().includes(libraryCourseFilter.toLowerCase()) || (kb.course_name || '').toLowerCase().includes(libraryCourseFilter.toLowerCase())).map((kb, idx) => {
-                const isFileSource = (kb.source || '').includes('MATERI FILE') || (kb.source || '').includes('FILE:');
+            {/* DAFTAR KARTU SEGMENTED */}
+            {(() => {
+              const filteredList = knowledgeBase.filter(kb => {
+                const matchesCourse = libraryCourseFilter === 'SEMUA' || 
+                  (kb.source || '').toLowerCase().includes(libraryCourseFilter.toLowerCase()) || 
+                  (kb.course_name || '').toLowerCase().includes(libraryCourseFilter.toLowerCase());
+                
+                const matchesMeeting = libraryMeetingFilter === 'SEMUA' || 
+                  parseInt(kb.meeting_no) === parseInt(libraryMeetingFilter) ||
+                  (kb.source || '').includes(`Pertemuan ${libraryMeetingFilter}`);
+
+                return matchesCourse && matchesMeeting;
+              });
+
+              if (filteredList.length === 0) {
                 return (
-                  <div key={kb.id || idx} style={{ backgroundColor: isFileSource ? '#1e1b4b' : '#042f2e', padding: '1.2rem', borderRadius: '12px', border: isFileSource ? '1px solid #8b5cf6' : '1px solid #06b6d4' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.4rem' }}>
-                      <span style={{ backgroundColor: isFileSource ? '#8b5cf6' : '#06b6d4', color: isFileSource ? '#fff' : '#000', padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '900' }}>
-                        {isFileSource ? '📄 MATERI FILE' : '📝 NOTES KETIKAN'} — {kb.source || kb.course_name}
-                      </span>
-                      {kb.id && isAdmin && <button onClick={() => handleDeleteInsight(kb.id)} style={{ backgroundColor: 'transparent', color: '#ef4444', border: 'none', cursor: 'pointer' }}>🗑️ Hapus</button>}
-                    </div>
-                    <div style={{ color: '#cbd5e1', fontSize: '0.88rem' }}>{renderFormattedNotes(kb.text)}</div>
+                  <div style={{ padding: '3rem 1rem', textAlign: 'center', backgroundColor: '#1e293b', borderRadius: '12px', border: '1px dashed #334155' }}>
+                    <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '0.5rem' }}>☕</span>
+                    <h4 style={{ color: '#94a3b8', margin: 0, fontSize: '0.95rem' }}>Belum Ada Materi Tersimpan untuk Segmen Ini</h4>
+                    <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '0.3rem' }}>Silakan input catatan lisan atau upload file PDF di menu <strong>Workspace</strong> terlebih dahulu.</p>
                   </div>
                 );
-              })}
-            </div>
+              }
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {filteredList.map((kb, idx) => {
+                    const isFileSource = (kb.source || '').includes('MATERI FILE') || (kb.source || '').includes('FILE:');
+                    return (
+                      <div key={kb.id || idx} style={{ backgroundColor: isFileSource ? '#1e1b4b' : '#042f2e', padding: '1.2rem', borderRadius: '12px', border: isFileSource ? '1px solid #8b5cf6' : '1px solid #06b6d4', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem' }}>
+                          <span style={{ backgroundColor: isFileSource ? '#8b5cf6' : '#06b6d4', color: isFileSource ? '#fff' : '#000', padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '900', letterSpacing: '0.5px' }}>
+                            {isFileSource ? '📄 MATERI FILE' : '📝 NOTES KETIKAN'} — {kb.source || kb.course_name}
+                          </span>
+                          {kb.id && isAdmin && (
+                            <button onClick={() => handleDeleteInsight(kb.id)} style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid #ef4444', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                              🗑️ Hapus Card
+                            </button>
+                          )}
+                        </div>
+                        <div style={{ color: '#cbd5e1', fontSize: '0.88rem' }}>
+                          {renderFormattedNotes(kb.text)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
           </div>
         )}
 
@@ -1218,7 +1286,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ✅ RESTORED MODAL 1: REVIEW & SAVE DRAFT AI SUBTASKS (TAHAP 2) */}
+      {/* MODAL 1: REVIEW & SAVE DRAFT AI SUBTASKS (TAHAP 2) */}
       {showAiModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 130, padding: '1rem' }}>
           <div style={{ backgroundColor: '#0f172a', padding: '1.5rem', borderRadius: '16px', border: '1px solid #ec4899', width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto' }}>
