@@ -338,23 +338,15 @@ export default function App() {
         body: JSON.stringify(notePayload)
       });
 
-      const insightPayload = new FormData();
-      const contentToSave = visualNotesOutput ? visualNotesOutput : rawNotesInput;
-      insightPayload.append('text', contentToSave);
-      insightPayload.append('source', `📝 NOTES KETIKAN: ${noteCourse} (Pertemuan ${noteMeetingNo})`);
-
-      const resInsight = await fetch(`${API_BASE_URL}/api/insights/upload`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${authToken}` },
-        body: insightPayload
-      });
-
-      if (resNotes.ok || resInsight.ok) {
-        alert(`✅ Catatan ${noteCourse} Pertemuan ${noteMeetingNo} Berhasil Disimpan sebagai Notes Ketikan!`);
+      if (resNotes.ok) {
+        alert(`✅ Catatan ${noteCourse} Pertemuan ${noteMeetingNo} Berhasil Disimpan & Masuk ke Library!`);
         fetchData();
+      } else {
+        const errorData = await resNotes.json();
+        alert(`⚠️ Gagal menyimpan: ${errorData.error || 'Server error'}`);
       }
     } catch (err) {
-      alert("Gagal menyimpan catatan ke Library.");
+      alert("Gagal terhubung ke server backend.");
     }
   };
 
